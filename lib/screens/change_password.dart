@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'donor_list.dart' hide baseUrl, apiKey;
+import 'blood_request.dart' hide baseUrl, apiKey;
+import 'admin_panel.dart';
 
 const String baseUrl = "https://redloop.safolota.com/api.php";
 const String apiKey = "redloop2026secure";
@@ -53,11 +56,10 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        // FIX: pop() না করে সরাসরি Login এ পাঠানো - Black Screen আসবে না
         Navigator.pushAndRemoveUntil(
           context,
           MaterialPageRoute(
-            builder: (_) => const SimpleLoginBackScreen(),
+            builder: (_) => SimpleLoginBackScreen(phone: widget.phone),
           ),
           (route) => false,
         );
@@ -96,8 +98,7 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
               child: const Text(
                 "⚠️ আপনি Temp Password দিয়ে Login করেছেন। এখনই নতুন Password সেট করুন।",
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                    fontWeight: FontWeight.bold, color: Colors.red),
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
               ),
             ),
             const SizedBox(height: 20),
@@ -148,20 +149,25 @@ class _ChangePasswordScreenState extends State<ChangePasswordScreen> {
   }
 }
 
-// এই স্ক্রিনটা Login এ ফেরত পাঠানোর জন্য - main.dart এর LoginScreen কে import cycle ছাড়া ব্যবহার করা যায় না, তাই এখানে ছোট একটা Login Back Screen বানানো
-// ইউজার এখানে নতুন Password দিয়ে Login করতে পারবে
 class SimpleLoginBackScreen extends StatefulWidget {
-  const SimpleLoginBackScreen({super.key});
+  final String phone;
+  const SimpleLoginBackScreen({super.key, this.phone = ""});
   @override
   State<SimpleLoginBackScreen> createState() => _SimpleLoginBackScreenState();
 }
 
 class _SimpleLoginBackScreenState extends State<SimpleLoginBackScreen> {
-  final phone = TextEditingController();
+  late TextEditingController phone;
   final pass = TextEditingController();
   bool showPass = false;
   String msg = "";
   bool loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    phone = TextEditingController(text: widget.phone);
+  }
 
   Future<void> doLogin() async {
     if (phone.text.trim().isEmpty || pass.text.trim().isEmpty) {
@@ -184,11 +190,14 @@ class _SimpleLoginBackScreenState extends State<SimpleLoginBackScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text("Welcome, ${data['data']['name']}")),
         );
-        // Login হয়ে গেলে Home এ যাওয়ার জন্য App Restart এর মতো Splash এ পাঠানো - Black Screen হবে না
-        // আপাতত Success মেসেজ দেখিয়ে এখানেই থাকবে, ইউজার চাইলে Back করে আবার Login করতে পারবে
-        setState(() {
-          msg = "Login Successful! App টা বন্ধ করে আবার খুলুন।";
-        });
+        // FIX: অ্যাপ বন্ধ করতে হবে না - সরাসরি Home এ যাবে
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AfterChangeHomeScreen(user: data['data']),
+          ),
+          (route) => false,
+        );
       } else {
         setState(() => msg = data['message']);
       }
@@ -263,6 +272,86 @@ class _SimpleLoginBackScreenState extends State<SimpleLoginBackScreen> {
             Text(msg,
                 style: const TextStyle(color: Colors.red),
                 textAlign: TextAlign.center),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Password Change এর পরের Home - main.dart এর Home এর মতোই, কিন্তু Import Cycle ছাড়া
+class AfterChangeHomeScreen extends StatelessWidget {
+  final Map<String, dynamic> user;
+  const AfterChangeHomeScreen({super.key, required this.user});
+  @override
+  Widget build(BuildContext context) {
+    bool isAdmin = (user['role'] ?? "") == "admin";
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("RedLoop Home"),
+        backgroundColor: Colors.red,
+        foregroundColor: Colors.white,
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            onPressed: () {
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => SimpleLoginBackScreen(phone: ""),
+                ),
+                (route) => false,
+              );
+            },
+            icon: const Icon(Icons.logout),
+          ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Image.network(defaultLogo, width: 100, height: 100,
+                  errorBuilder: (_, __, ___) => const Icon(Icons.bloodtype, size: 80, color: Colors.red)),
+            ),
+            const SizedBox(height: 20),
+            Text("Welcome, ${user['name']}",
+                style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            Text("Phone: ${user['phone']}"),
+            Text("Role: ${user['role']}"),
+            const SizedBox(height: 20),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.bloodtype, color: Colors.red),
+                title: const Text("Find Blood Donors"),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const DonorListScreen())),
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.emergency, color: Colors.red),
+                title: const Text("Request Blood"),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => const BloodRequestScreen())),
+              ),
+            ),
+            if (isAdmin)
+              Card(
+                color: Colors.red.shade50,
+                child: ListTile(
+                  leading: const Icon(Icons.admin_panel_settings, color: Colors.red),
+                  title: const Text("Admin Panel",
+                      style: TextStyle(fontWeight: FontWeight.bold, color: Colors.red)),
+                  trailing: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.red),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const AdminPanelScreen())),
+                ),
+              ),
           ],
         ),
       ),
