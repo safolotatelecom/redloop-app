@@ -1,8 +1,6 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:http/io_client.dart';
 import 'screens/register.dart' hide baseUrl, apiKey;
 import 'screens/donor_list.dart' hide baseUrl, apiKey;
 import 'screens/blood_request.dart' hide baseUrl, apiKey;
@@ -12,40 +10,8 @@ void main() {
 }
 
 const String baseUrl = "https://redloop.safolota.com/api.php";
-const String subDomainHost = "redloop.safolota.com";
-const String fallbackIp = "144.79.219.130";
 const String apiKey = "redloop2026secure";
 const String defaultLogo = "https://redloop.safolota.com/logo.png";
-
-Future<String> resolveIp() async {
-  try {
-    final res = await http.get(Uri.parse("https://dns.google/resolve?name=" + subDomainHost + "&type=A")).timeout(const Duration(seconds: 5));
-    final data = jsonDecode(res.body);
-    final ans = data['Answer'] as List;
-    for (var a in ans) {
-      if (a['type'] == 1) return a['data'].toString();
-    }
-  } catch (_) {}
-  return fallbackIp;
-}
-
-Future<http.Client> createClient() async {
-  final ip = await resolveIp();
-  final ioClient = HttpClient();
-  ioClient.connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) {
-    Future<Socket> getSocket() async {
-      final sock = await Socket.connect(ip, 443);
-      final secure = await SecureSocket.secure(sock, host: subDomainHost, onBadCertificate: (cert) => true);
-      return secure;
-    }
-    return ConnectionTask.fromSocket(getSocket(), (Socket s) {});
-  };
-  return IOClient(ioClient);
-}
-
-Map<String, String> apiHeaders() {
-  return {"X-API-KEY": apiKey, "Host": subDomainHost};
-}
 
 class RedLoopApp extends StatelessWidget {
   const RedLoopApp({super.key});
@@ -61,14 +27,9 @@ class RedLoopApp extends StatelessWidget {
 }
 
 Future<Map<String, dynamic>> apiCall(String action, Map<String, String> body) async {
-  final client = await createClient();
-  try {
-    final uri = Uri.parse(baseUrl + "?action=" + action);
-    final res = await client.post(uri, headers: apiHeaders(), body: body).timeout(const Duration(seconds: 15));
-    return jsonDecode(res.body);
-  } finally {
-    client.close();
-  }
+  final uri = Uri.parse(baseUrl + "?action=" + action);
+  final res = await http.post(uri, headers: {"X-API-KEY": apiKey}, body: body).timeout(const Duration(seconds: 15));
+  return jsonDecode(res.body);
 }
 
 class SplashScreen extends StatefulWidget {
@@ -92,10 +53,8 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   Future<void> loadSettings() async {
     try {
-      final client = await createClient();
-      final res = await client.get(Uri.parse(baseUrl + "?action=settings"), headers: apiHeaders()).timeout(const Duration(seconds: 10));
+      final res = await http.get(Uri.parse(baseUrl + "?action=settings"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 10));
       final data = jsonDecode(res.body);
-      client.close();
       if (data['success'] == true) {
         setState(() {
           logoUrl = data['data']['logo_url'] ?? defaultLogo;
@@ -187,9 +146,7 @@ class _LoginScreenState extends State<LoginScreen> {
       msg = "Testing redloop.safolota.com...";
     });
     try {
-      final client = await createClient();
-      final res = await client.get(Uri.parse(baseUrl + "?action=ping"), headers: apiHeaders()).timeout(const Duration(seconds: 10));
-      client.close();
+      final res = await http.get(Uri.parse(baseUrl + "?action=ping"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 10));
       setState(() {
         msg = "PING OK - Status: " + res.statusCode.toString() + " - Body: " + res.body;
       });
