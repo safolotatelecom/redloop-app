@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-// FROZEN - DO NOT CHANGE
+// FROZEN
 const String baseUrl = "https://redloop.safolota.com/api.php";
 const String apiKey = "redloop2026secure";
 
@@ -21,7 +21,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   String role = "donor";
   bool loading = false;
   String msg = "";
-
   final List<String> groups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
   Future<void> doRegister() async {
@@ -37,14 +36,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
     try {
       final uri = Uri.parse(baseUrl + "?action=register");
-      final res = await http.post(uri, headers: {"X-API-KEY": apiKey}, body: {
-        "name": name.text.trim(),
-        "phone": phone.text.trim(),
-        "password": pass.text.trim(),
-        "blood_group": bloodGroup,
-        "district": district.text.trim(),
-        "role": role,
-      }).timeout(const Duration(seconds: 15));
+      final res = await http.post(uri, headers: {"X-API-KEY": apiKey}, body: {"name": name.text.trim(), "phone": phone.text.trim(), "password": pass.text.trim(), "blood_group": bloodGroup, "district": district.text.trim(), "role": role}).timeout(const Duration(seconds: 15));
       final data = jsonDecode(res.body);
       if (data['success'] == true) {
         setState(() {
