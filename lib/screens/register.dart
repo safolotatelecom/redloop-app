@@ -22,7 +22,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> doRegister() async {
     if (name.text.isEmpty || phone.text.isEmpty || pass.text.isEmpty) {
-      setState(() => msg = "Sob field puron korun");
+      setState(() => msg = "Please fill in all fields.");
       return;
     }
     setState(() { loading = true; msg = ""; });
@@ -34,14 +34,14 @@ class _RegisterScreenState extends State<RegisterScreen> {
       );
       final data = jsonDecode(res.body);
       if (data['success'] == true) {
-        setState(() => msg = "Register Success! Ekhon Login korun");
+        setState(() => msg = "Registration Successful! Please login now.");
         await Future.delayed(const Duration(seconds: 1));
         if (mounted) Navigator.pop(context);
       } else {
-        setState(() => msg = data['message'] ?? "Register Failed");
+        setState(() => msg = data['message'] ?? "Registration Failed. Please try again.");
       }
-    } catch (e) {
-      setState(() => msg = "Server Error: $e");
+    } catch (_) {
+      setState(() => msg = "Cannot connect to server. Please check your internet connection.");
     }
     setState(() => loading = false);
   }
@@ -56,15 +56,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
           children: [
             TextField(controller: name, decoration: const InputDecoration(labelText: "Full Name", border: OutlineInputBorder())),
             const SizedBox(height: 12),
-            TextField(controller: phone, decoration: const InputDecoration(labelText: "Phone", border: OutlineInputBorder()), keyboardType: TextInputType.phone),
+            TextField(controller: phone, decoration: const InputDecoration(labelText: "Phone Number", border: OutlineInputBorder()), keyboardType: TextInputType.phone),
             const SizedBox(height: 12),
             TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder())),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(value: bloodGroup, decoration: const InputDecoration(labelText: "Blood Group", border: OutlineInputBorder()), items: groups.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(), onChanged: (v) => setState(() => bloodGroup = v!)),
             const SizedBox(height: 20),
-            SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: loading ? null : doRegister, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text(loading ? "Wait..." : "Register", style: const TextStyle(color: Colors.white)))),
+            SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: loading ? null : doRegister, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text(loading ? "Please wait..." : "Register", style: const TextStyle(color: Colors.white)))),
             const SizedBox(height: 10),
-            Text(msg, style: const TextStyle(color: Colors.red)),
+            Text(msg, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
           ],
         ),
       ),
