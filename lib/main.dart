@@ -1,6 +1,6 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'screens/register.dart' hide baseUrl, apiKey;
 import 'screens/donor_list.dart' hide baseUrl, apiKey;
 import 'screens/blood_request.dart' hide baseUrl, apiKey;
@@ -11,8 +11,77 @@ void main() {
 
 // FROZEN - DO NOT CHANGE
 const String baseUrl = "https://redloop.safolota.com/api.php";
+const String subDomainHost = "redloop.safolota.com";
+const String fallbackIp = "144.79.219.130";
 const String apiKey = "redloop2026secure";
 const String defaultLogo = "https://redloop.safolota.com/logo.png";
+
+Future<String> resolveIp() async {
+  try {
+    final client = HttpClient();
+    final req = await client.getUrl(Uri.parse("https://dns.google/resolve?name=" + subDomainHost + "&type=A"));
+    final res = await req.close();
+    final body = await res.transform(utf8.decoder).join();
+    client.close();
+    final data = jsonDecode(body);
+    final ans = data['Answer'] as List;
+    for (var a in ans) {
+      if (a['type'] == 1) return a['data'].toString();
+    }
+  } catch (_) {}
+  return fallbackIp;
+}
+
+String decodeChunked(String s) {
+  String out = "";
+  int i = 0;
+  while (i < s.length) {
+    int end = s.indexOf("\r\n", i);
+    if (end == -1) break;
+    int len = int.tryParse(s.substring(i, end).trim(), radix: 16) ?? 0;
+    if (len == 0) break;
+    int start = end + 2;
+    if (start + len > s.length) break;
+    out += s.substring(start, start + len);
+    i = start + len + 2;
+  }
+  return out;
+}
+
+Future<String> httpsRequest(String method, String action, Map<String, String> body) async {
+  final ip = await resolveIp();
+  String encoded = "";
+  if (body.isNotEmpty) {
+    encoded = body.entries.map((e) => Uri.encodeComponent(e.key) + "=" + Uri.encodeComponent(e.value)).join("&");
+  }
+  final sock = await Socket.connect(ip, 443, timeout: const Duration(seconds: 10));
+  final sec = await SecureSocket.secure(sock, host: subDomainHost, onBadCertificate: (c) => true);
+  String req;
+  if (method == "POST") {
+    req = "POST /api.php?action=" + action + " HTTP/1.1\r\nHost: " + subDomainHost + "\r\nX-API-KEY: " + apiKey + "\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: " + encoded.length.toString() + "\r\nConnection: close\r\n\r\n" + encoded;
+  } else {
+    req = "GET /api.php?action=" + action + " HTTP/1.1\r\nHost: " + subDomainHost + "\r\nX-API-KEY: " + apiKey + "\r\nConnection: close\r\n\r\n";
+  }
+  sec.write(req);
+  await sec.flush();
+  List<int> bytes = [];
+  await for (var chunk in sec) {
+    bytes.addAll(chunk);
+  }
+  try { await sec.close(); } catch (_) {}
+  String resp = utf8.decode(bytes, allowMalformed: true);
+  int idx = resp.indexOf("\r\n\r\n");
+  String b = idx >= 0 ? resp.substring(idx + 4) : resp;
+  if (resp.toLowerCase().contains("transfer-encoding: chunked")) {
+    b = decodeChunked(b);
+  }
+  return b;
+}
+
+Future<Map<String, dynamic>> apiCall(String action, Map<String, String> body) async {
+  final b = await httpsRequest("POST", action, body);
+  return jsonDecode(b);
+}
 
 class RedLoopApp extends StatelessWidget {
   const RedLoopApp({super.key});
@@ -27,12 +96,6 @@ class RedLoopApp extends StatelessWidget {
   }
 }
 
-Future<Map<String, dynamic>> apiCall(String action, Map<String, String> body) async {
-  final uri = Uri.parse(baseUrl + "?action=" + action);
-  final res = await http.post(uri, headers: {"X-API-KEY": apiKey}, body: body).timeout(const Duration(seconds: 15));
-  return jsonDecode(res.body);
-}
-
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   @override
@@ -44,18 +107,16 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   String notice = "Donate Blood, Save Life";
   String anim = "zoom";
   late AnimationController _c;
-
   @override
   void initState() {
     super.initState();
     _c = AnimationController(vsync: this, duration: const Duration(seconds: 2))..forward();
     loadSettings();
   }
-
   Future<void> loadSettings() async {
     try {
-      final res = await http.get(Uri.parse(baseUrl + "?action=settings"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 10));
-      final data = jsonDecode(res.body);
+      final b = await httpsRequest("GET", "settings", {});
+      final data = jsonDecode(b);
       if (data['success'] == true) {
         setState(() {
           logoUrl = data['data']['logo_url'] ?? defaultLogo;
@@ -69,13 +130,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
       Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => LoginScreen(logoUrl: logoUrl, notice: notice)));
     }
   }
-
   @override
   void dispose() {
     _c.dispose();
     super.dispose();
   }
-
   @override
   Widget build(BuildContext context) {
     Widget logo = Image.network(logoUrl, width: 180, height: 180, errorBuilder: (_, __, ___) => const Icon(Icons.bloodtype, size: 120, color: Colors.red));
@@ -117,7 +176,6 @@ class _LoginScreenState extends State<LoginScreen> {
   final pass = TextEditingController(text: "password");
   bool loading = false;
   String msg = "";
-
   Future<void> doLogin() async {
     setState(() {
       loading = true;
@@ -141,15 +199,14 @@ class _LoginScreenState extends State<LoginScreen> {
       loading = false;
     });
   }
-
   Future<void> testPing() async {
     setState(() {
       msg = "Testing...";
     });
     try {
-      final res = await http.get(Uri.parse(baseUrl + "?action=ping"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 10));
+      final b = await httpsRequest("GET", "ping", {});
       setState(() {
-        msg = "PING OK - Status: " + res.statusCode.toString() + " - Body: " + res.body;
+        msg = "PING OK - Body: " + b;
       });
     } catch (e) {
       setState(() {
@@ -157,7 +214,6 @@ class _LoginScreenState extends State<LoginScreen> {
       });
     }
   }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -195,7 +251,6 @@ class HomeScreen extends StatelessWidget {
   final String logoUrl;
   final String notice;
   const HomeScreen({super.key, required this.user, required this.logoUrl, required this.notice});
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
