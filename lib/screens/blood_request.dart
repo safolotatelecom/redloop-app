@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-// FROZEN - DO NOT CHANGE
+// FROZEN
 const String baseUrl = "https://redloop.safolota.com/api.php";
 const String apiKey = "redloop2026secure";
 
@@ -20,7 +20,6 @@ class _BloodRequestScreenState extends State<BloodRequestScreen> {
   String bloodGroup = "A+";
   bool loading = false;
   String msg = "";
-
   final List<String> groups = ["A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
   Future<void> sendRequest() async {
@@ -36,13 +35,7 @@ class _BloodRequestScreenState extends State<BloodRequestScreen> {
     });
     try {
       final uri = Uri.parse(baseUrl + "?action=blood_request");
-      final res = await http.post(uri, headers: {"X-API-KEY": apiKey}, body: {
-        "patient_name": patientName.text.trim(),
-        "hospital": hospital.text.trim(),
-        "phone": phone.text.trim(),
-        "blood_group": bloodGroup,
-        "bags": bags.text.trim(),
-      }).timeout(const Duration(seconds: 15));
+      final res = await http.post(uri, headers: {"X-API-KEY": apiKey}, body: {"patient_name": patientName.text.trim(), "hospital": hospital.text.trim(), "phone": phone.text.trim(), "blood_group": bloodGroup, "bags": bags.text.trim()}).timeout(const Duration(seconds: 15));
       final data = jsonDecode(res.body);
       if (data['success'] == true) {
         setState(() {
