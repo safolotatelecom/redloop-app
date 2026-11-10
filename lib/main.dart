@@ -27,12 +27,14 @@ class RedLoopApp extends StatelessWidget {
 }
 
 Future<Map<String, dynamic>> apiCall(String action, Map<String, String> body) async {
-  final res = await http.post(
-    Uri.parse("$baseUrl?action=$action"),
-    headers: {"X-API-KEY": apiKey},
-    body: body,
-  );
-  return jsonDecode(res.body);
+  final uri = Uri.parse("$baseUrl?action=$action");
+  final res = await http.post(uri, headers: {"X-API-KEY": apiKey}, body: body).timeout(const Duration(seconds: 15));
+  // Debug: show raw response if not JSON
+  try {
+    return jsonDecode(res.body);
+  } catch (_) {
+    throw Exception("HTTP ${res.statusCode} - Body: ${res.body.substring(0, res.body.length > 200 ? 200 : res.body.length)}");
+  }
 }
 
 class SplashScreen extends StatefulWidget {
@@ -56,7 +58,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   Future<void> loadSettings() async {
     try {
-      final res = await http.get(Uri.parse("$baseUrl?action=settings"), headers: {"X-API-KEY": apiKey});
+      final res = await http.get(Uri.parse("$baseUrl?action=settings"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 10));
       final data = jsonDecode(res.body);
       if (data['success'] == true) {
         setState(() {
@@ -121,18 +123,28 @@ class _LoginScreenState extends State<LoginScreen> {
   String msg = "";
 
   Future<void> doLogin() async {
-    setState(() { loading = true; msg = ""; });
+    setState(() { loading = true; msg = "Connecting to server..."; });
     try {
       final r = await apiCall("login", {"phone": phone.text.trim(), "password": pass.text.trim()});
       if (r['success'] == true) {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => HomeScreen(user: r['data'], logoUrl: widget.logoUrl, notice: widget.notice)));
       } else {
-        setState(() => msg = r['message'] ?? "Login Failed. Please try again.");
+        setState(() => msg = "SERVER SAYS: ${r['message']}");
       }
-    } catch (_) {
-      setState(() => msg = "Cannot connect to server. Please check your internet connection.");
+    } catch (e) {
+      setState(() => msg = "REAL ERROR: $e");
     }
     setState(() => loading = false);
+  }
+
+  Future<void> testPing() async {
+    setState(() => msg = "Testing connection...");
+    try {
+      final res = await http.get(Uri.parse("$baseUrl?action=ping"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 10));
+      setState(() => msg = "PING OK - Status: ${res.statusCode} - Body: ${res.body}");
+    } catch (e) {
+      setState(() => msg = "PING FAILED: $e");
+    }
   }
 
   @override
@@ -152,10 +164,12 @@ class _LoginScreenState extends State<LoginScreen> {
             TextField(controller: pass, obscureText: true, decoration: const InputDecoration(labelText: "Password", border: OutlineInputBorder())),
             const SizedBox(height: 20),
             SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: loading ? null : doLogin, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text(loading ? "Please wait..." : "Login", style: const TextStyle(color: Colors.white)))),
+            const SizedBox(height: 10),
+            OutlinedButton(onPressed: testPing, child: const Text("Test Server Connection")),
             const SizedBox(height: 12),
             TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen())), child: const Text("New User? Register Here", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold))),
             const SizedBox(height: 10),
-            Text(msg, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
+            SelectableText(msg, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
             const SizedBox(height: 10),
             const Text("Test Account: 01700000000 / password", style: TextStyle(color: Colors.grey)),
           ],
