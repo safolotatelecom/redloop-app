@@ -22,7 +22,7 @@ class _BloodRequestScreenState extends State<BloodRequestScreen> {
 
   Future<void> sendRequest() async {
     if (name.text.isEmpty || phone.text.isEmpty || hospital.text.isEmpty) {
-      setState(() => msg = "Sob field puron korun");
+      setState(() => msg = "Please fill in all fields.");
       return;
     }
     setState(() { loading = true; msg = ""; });
@@ -33,9 +33,9 @@ class _BloodRequestScreenState extends State<BloodRequestScreen> {
         body: {"name": name.text.trim(), "phone": phone.text.trim(), "hospital": hospital.text.trim(), "blood_group": bloodGroup},
       );
       final data = jsonDecode(res.body);
-      setState(() => msg = data['success'] == true ? "Request Success! Donor ra dekhbe." : (data['message'] ?? "Failed"));
-    } catch (e) {
-      setState(() => msg = "Server Error: $e");
+      setState(() => msg = data['success'] == true ? "Request Sent Successfully! Donors will see your request." : (data['message'] ?? "Request Failed. Please try again."));
+    } catch (_) {
+      setState(() => msg = "Cannot connect to server. Please check your internet connection.");
     }
     setState(() => loading = false);
   }
@@ -48,15 +48,15 @@ class _BloodRequestScreenState extends State<BloodRequestScreen> {
         padding: const EdgeInsets.all(20),
         child: Column(
           children: [
-            TextField(controller: name, decoration: const InputDecoration(labelText: "Rogir Name", border: OutlineInputBorder())),
+            TextField(controller: name, decoration: const InputDecoration(labelText: "Patient Name", border: OutlineInputBorder())),
             const SizedBox(height: 12),
             TextField(controller: phone, decoration: const InputDecoration(labelText: "Contact Phone", border: OutlineInputBorder()), keyboardType: TextInputType.phone),
             const SizedBox(height: 12),
             TextField(controller: hospital, decoration: const InputDecoration(labelText: "Hospital / Location", border: OutlineInputBorder())),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(value: bloodGroup, decoration: const InputDecoration(labelText: "Blood Group Dorkar", border: OutlineInputBorder()), items: groups.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(), onChanged: (v) => setState(() => bloodGroup = v!)),
+            DropdownButtonFormField<String>(value: bloodGroup, decoration: const InputDecoration(labelText: "Required Blood Group", border: OutlineInputBorder()), items: groups.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(), onChanged: (v) => setState(() => bloodGroup = v!)),
             const SizedBox(height: 20),
-            SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: loading ? null : sendRequest, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text(loading ? "Wait..." : "Request Pathan", style: const TextStyle(color: Colors.white)))),
+            SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: loading ? null : sendRequest, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text(loading ? "Please wait..." : "Send Request", style: const TextStyle(color: Colors.white)))),
             const SizedBox(height: 10),
             Text(msg, style: const TextStyle(color: Colors.red), textAlign: TextAlign.center),
           ],
