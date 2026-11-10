@@ -9,6 +9,7 @@ void main() {
   runApp(const RedLoopApp());
 }
 
+// FROZEN - DO NOT CHANGE
 const String baseUrl = "https://redloop.safolota.com/api.php";
 const String apiKey = "redloop2026secure";
 const String defaultLogo = "https://redloop.safolota.com/logo.png";
@@ -143,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> testPing() async {
     setState(() {
-      msg = "Testing redloop.safolota.com...";
+      msg = "Testing...";
     });
     try {
       final res = await http.get(Uri.parse(baseUrl + "?action=ping"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 10));
