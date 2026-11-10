@@ -11,17 +11,33 @@ void main() {
   runApp(const RedLoopApp());
 }
 
-// Subdomain stays - we talk to redloop.safolota.com via Host header
-// IP is from your Zone Editor: 144.79.219.130
-const String baseUrl = "https://144.79.219.130/api.php";
+const String baseUrl = "https://redloop.safolota.com/api.php";
 const String subDomainHost = "redloop.safolota.com";
+const String fallbackIp = "144.79.219.130";
 const String apiKey = "redloop2026secure";
 const String defaultLogo = "https://redloop.safolota.com/logo.png";
 
-http.Client createClient() {
+// DNS-over-HTTPS দিয়ে IP বের করি - ফোনের খারাপ DNS ব্যবহার করি না
+Future<String> resolveIp() async {
+  try {
+    final res = await http.get(Uri.parse("https://dns.google/resolve?name=" + subDomainHost + "&type=A")).timeout(const Duration(seconds: 5));
+    final data = jsonDecode(res.body);
+    final ans = data['Answer'] as List;
+    for (var a in ans) {
+      if (a['type'] == 1) return a['data'].toString();
+    }
+  } catch (_) {}
+  return fallbackIp;
+}
+
+Future<http.Client> createClient() async {
+  final ip = await resolveIp();
   final ioClient = HttpClient();
-  ioClient.badCertificateCallback = (X509Certificate cert, String host, int port) {
-    return true;
+  // IP তে কানেক্ট করবো, কিন্তু SNI + Host হবে সাবডোমেইন - সার্ভার বুঝবে redloop এ যেতে চাই
+  ioClient.connectionFactory = (Uri uri, String? proxyHost, int? proxyPort) async {
+    final socket = await Socket.connect(ip, 443);
+    final secure = await SecureSocket.secure(socket, host: subDomainHost, onBadCertificate: (cert) => true);
+    return secure;
   };
   return IOClient(ioClient);
 }
@@ -44,7 +60,7 @@ class RedLoopApp extends StatelessWidget {
 }
 
 Future<Map<String, dynamic>> apiCall(String action, Map<String, String> body) async {
-  final client = createClient();
+  final client = await createClient();
   try {
     final uri = Uri.parse(baseUrl + "?action=" + action);
     final res = await client.post(uri, headers: apiHeaders(), body: body).timeout(const Duration(seconds: 15));
@@ -75,7 +91,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
   Future<void> loadSettings() async {
     try {
-      final client = createClient();
+      final client = await createClient();
       final res = await client.get(Uri.parse(baseUrl + "?action=settings"), headers: apiHeaders()).timeout(const Duration(seconds: 10));
       final data = jsonDecode(res.body);
       client.close();
@@ -170,7 +186,7 @@ class _LoginScreenState extends State<LoginScreen> {
       msg = "Testing redloop.safolota.com...";
     });
     try {
-      final client = createClient();
+      final client = await createClient();
       final res = await client.get(Uri.parse(baseUrl + "?action=ping"), headers: apiHeaders()).timeout(const Duration(seconds: 10));
       client.close();
       setState(() {
