@@ -1,7 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'dart:convert';
 
+// FROZEN - DO NOT CHANGE
 const String baseUrl = "https://redloop.safolota.com/api.php";
 const String apiKey = "redloop2026secure";
 
@@ -12,10 +13,11 @@ class DonorListScreen extends StatefulWidget {
 }
 
 class _DonorListScreenState extends State<DonorListScreen> {
-  List donors = [];
+  List<dynamic> donors = [];
   bool loading = true;
+  String msg = "";
   String filter = "All";
-  final groups = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
+  final List<String> groups = ["All", "A+", "A-", "B+", "B-", "O+", "O-", "AB+", "AB-"];
 
   @override
   void initState() {
@@ -24,48 +26,70 @@ class _DonorListScreenState extends State<DonorListScreen> {
   }
 
   Future<void> loadDonors() async {
-    setState(() => loading = true);
+    setState(() {
+      loading = true;
+      msg = "";
+    });
     try {
-      final res = await http.get(Uri.parse("$baseUrl?action=donors"), headers: {"X-API-KEY": apiKey});
+      final uri = Uri.parse(baseUrl + "?action=donors");
+      final res = await http.get(uri, headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 15));
       final data = jsonDecode(res.body);
-      if (data['success'] == true) donors = data['data'];
-    } catch (_) {}
-    setState(() => loading = false);
+      if (data['success'] == true) {
+        setState(() {
+          donors = data['data'] as List;
+        });
+      } else {
+        setState(() {
+          msg = data['message'].toString();
+        });
+      }
+    } catch (e) {
+      setState(() {
+        msg = "ERROR: " + e.toString();
+      });
+    }
+    setState(() {
+      loading = false;
+    });
+  }
+
+  List<dynamic> get filtered {
+    if (filter == "All") return donors;
+    return donors.where((d) => d['blood_group'].toString() == filter).toList();
   }
 
   @override
   Widget build(BuildContext context) {
-    final shown = filter == "All" ? donors : donors.where((d) => d['blood_group'] == filter).toList();
     return Scaffold(
-      appBar: AppBar(title: const Text("Donor List"), backgroundColor: Colors.red, foregroundColor: Colors.white),
+      appBar: AppBar(title: const Text("Find Blood Donors"), backgroundColor: Colors.red, foregroundColor: Colors.white, actions: [IconButton(onPressed: loadDonors, icon: const Icon(Icons.refresh))]),
       body: Column(
         children: [
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(8),
-            child: Row(children: groups.map((g) => Padding(padding: const EdgeInsets.only(right: 6), child: ChoiceChip(label: Text(g), selected: filter == g, selectedColor: Colors.red.shade100, onSelected: (_) => setState(() => filter = g)))).toList()),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: DropdownButtonFormField<String>(value: filter, decoration: const InputDecoration(labelText: "Filter by Blood Group", border: OutlineInputBorder()), items: groups.map((g) => DropdownMenuItem(value: g, child: Text(g))).toList(), onChanged: (v) => setState(() => filter = v!)),
           ),
-          Expanded(
-            child: loading
-                ? const Center(child: CircularProgressIndicator(color: Colors.red))
-                : shown.isEmpty
-                    ? const Center(child: Text("No donors found."))
-                    : ListView.builder(
-                        itemCount: shown.length,
-                        itemBuilder: (_, i) {
-                          final d = shown[i];
-                          return Card(
-                            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                            child: ListTile(
-                              leading: CircleAvatar(backgroundColor: Colors.red, child: Text(d['blood_group'] ?? "?", style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
-                              title: Text(d['name'] ?? "Unknown"),
-                              subtitle: Text("Phone: ${d['phone'] ?? ''}"),
-                              trailing: const Icon(Icons.call, color: Colors.green),
-                            ),
-                          );
-                        },
-                      ),
-          ),
+          if (loading) const Expanded(child: Center(child: CircularProgressIndicator(color: Colors.red))),
+          if (!loading && msg.isNotEmpty) Padding(padding: const EdgeInsets.all(12), child: Text(msg, style: const TextStyle(color: Colors.red))),
+          if (!loading)
+            Expanded(
+              child: filtered.isEmpty
+                  ? const Center(child: Text("No donors found"))
+                  : ListView.builder(
+                      itemCount: filtered.length,
+                      itemBuilder: (context, i) {
+                        final d = filtered[i];
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          child: ListTile(
+                            leading: CircleAvatar(backgroundColor: Colors.red, child: Text(d['blood_group'].toString(), style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold))),
+                            title: Text(d['name'].toString()),
+                            subtitle: Text("Phone: " + d['phone'].toString() + "\nDistrict: " + (d['district'] ?? "").toString()),
+                            isThreeLine: true,
+                          ),
+                        );
+                      },
+                    ),
+            ),
         ],
       ),
     );
