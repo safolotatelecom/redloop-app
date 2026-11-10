@@ -49,7 +49,7 @@ class _DonorListScreenState extends State<DonorListScreen> {
             child: loading
                 ? const Center(child: CircularProgressIndicator(color: Colors.red))
                 : shown.isEmpty
-                    ? const Center(child: Text("Kono donor pawa jayni"))
+                    ? const Center(child: Text("No donors found."))
                     : ListView.builder(
                         itemCount: shown.length,
                         itemBuilder: (_, i) {
