@@ -1,6 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'screens/register.dart' hide baseUrl, apiKey;
+import 'screens/donor_list.dart' hide baseUrl, apiKey;
+import 'screens/blood_request.dart' hide baseUrl, apiKey;
 
 void main() {
   runApp(const RedLoopApp());
@@ -187,6 +190,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Text(loading ? "Wait..." : "Login", style: const TextStyle(color: Colors.white)),
               ),
             ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () {
+                Navigator.push(context, MaterialPageRoute(builder: (_) => const RegisterScreen()));
+              },
+              child: const Text("Notun? Ekhane Register korun", style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            ),
             const SizedBox(height: 10),
             Text(msg, style: const TextStyle(color: Colors.red)),
             const SizedBox(height: 10),
@@ -238,8 +248,36 @@ class HomeScreen extends StatelessWidget {
             Text("Phone: ${user['phone']}"),
             Text("Role: ${user['role']}"),
             const SizedBox(height: 20),
-            Card(child: ListTile(leading: const Icon(Icons.bloodtype, color: Colors.red), title: const Text("Rokto Donor Khujun"), subtitle: const Text("Shighroi asche - Donor List"), onTap: () {})),
-            Card(child: ListTile(leading: const Icon(Icons.person, color: Colors.red), title: const Text("Amar Profile"), subtitle: Text("ID: ${user['id']}"), onTap: () {})),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.bloodtype, color: Colors.red),
+                title: const Text("Rokto Donor Khujun"),
+                subtitle: const Text("Blood group diye filter korun"),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const DonorListScreen()));
+                },
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.emergency, color: Colors.red),
+                title: const Text("Blood Request Korun"),
+                subtitle: const Text("Emergency te rokto chan?"),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (_) => const BloodRequestScreen()));
+                },
+              ),
+            ),
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.person, color: Colors.red),
+                title: const Text("Amar Profile"),
+                subtitle: Text("ID: ${user['id']}"),
+                onTap: () {},
+              ),
+            ),
           ],
         ),
       ),
