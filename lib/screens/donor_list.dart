@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-// FROZEN - DO NOT CHANGE
+// FROZEN
 const String baseUrl = "https://redloop.safolota.com/api.php";
 const String apiKey = "redloop2026secure";
 
