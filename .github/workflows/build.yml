@@ -14,7 +14,18 @@ jobs:
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
+      - name: Backup our code
+        run: |
+          cp lib/main.dart /tmp/main.dart.bak
+          cp pubspec.yaml /tmp/pubspec.yaml.bak
+      - name: Create missing Android / iOS folders
+        run: flutter create --project-name redloop --org com.safolota.redloop .
+      - name: Restore our code
+        run: |
+          cp /tmp/main.dart.bak lib/main.dart
+          cp /tmp/pubspec.yaml.bak pubspec.yaml
       - run: flutter pub get
+      - run: flutter analyze || true
       - run: flutter build apk --release
       - run: flutter build appbundle --release
       - uses: actions/upload-artifact@v4
