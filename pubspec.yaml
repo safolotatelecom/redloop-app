@@ -1,16 +1,17 @@
-name: redloop
-description: RedLoop - Rokto Din, Jibon Bachan
+name: redloop_pro
+description: RedLoop Pro - Blood Donation App
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.5.0
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
   http: ^1.2.0
-  url_launcher: ^6.2.5
+  shared_preferences: ^2.2.2
+  local_auth: ^2.2.0
 
 dev_dependencies:
   flutter_test:
