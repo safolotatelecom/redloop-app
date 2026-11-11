@@ -1,4 +1,4 @@
-name: Build RedLoop
+name: RedLoop Pro - Build APK
 
 on:
   push:
@@ -6,45 +6,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-android:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code - GitHub থেকে Code নেওয়া
+        uses: actions/checkout@v4
 
-      - name: Setup Java 17 - Gradle 8.10 Compatible
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Setup Flutter 3.35 - Stable & Java 17 Compatible
+      - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.35.4'
+          flutter-version: '3.22.0'
           channel: 'stable'
-          cache: true
 
-      - name: Backup our code
-        run: |
-          cp lib/main.dart /tmp/main.dart.bak
-          cp pubspec.yaml /tmp/pubspec.yaml.bak
+      - name: Get Packages
+        run: flutter pub get
 
-      - name: Create missing Android / iOS folders
-        run: flutter create --project-name redloop --org com.safolota.redloop .
+      - name: Analyze Code
+        run: flutter analyze
 
-      - name: Restore our code
-        run: |
-          cp /tmp/main.dart.bak lib/main.dart
-          cp /tmp/pubspec.yaml.bak pubspec.yaml
+      - name: Build APK Debug - cPanel Server Based App
+        run: flutter build apk --debug
 
-      - run: flutter pub get
-      - run: flutter analyze || true
-      - run: flutter build apk --release
-      - run: flutter build appbundle --release
+      - name: Build APK Release
+        run: flutter build apk --release
 
-      - uses: actions/upload-artifact@v4
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
         with:
-          name: redloop-apk-aab
-          path: |
-            build/app/outputs/flutter-apk/app-release.apk
-            build/app/outputs/bundle/release/app-release.aab
+          name: redloop-pro-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
