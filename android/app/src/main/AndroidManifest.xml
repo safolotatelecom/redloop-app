@@ -13,9 +13,11 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
-        android:label="RedLoop Pro"
-        android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+    android:label="RedLoop Pro"
+    android:name="${applicationName}"
+    android:icon="@mipmap/ic_launcher"
+    android:usesCleartextTraffic="true">
+        
         <activity
             android:name=".MainActivity"
             android:exported="true"
