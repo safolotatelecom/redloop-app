@@ -1,3 +1,4 @@
+
 plugins {
     id "com.android.application"
     id "kotlin-android"
@@ -5,23 +6,25 @@ plugins {
 }
 
 android {
-    namespace = "com.safolota.redlooppro"
-    compileSdk = 34
-    ndkVersion = "25.1.8937393"
+    namespace = "com.redloop.pro"
+    compileSdk = flutter.compileSdkVersion
+    ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlinOptions {
-        jvmTarget = "1.8"
+        jvmTarget = JavaVersion.VERSION_17.toString()
     }
 
     defaultConfig {
-        applicationId = "com.safolota.redlooppro"
-        minSdk = 21
-        targetSdk = 34
+        applicationId = "com.redloop.pro"
+
+        minSdk = flutter.minSdkVersion
+        targetSdk = flutter.targetSdkVersion
+
         versionCode = 1
         versionName = "1.0.0"
     }
@@ -29,8 +32,6 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.debug
-            minifyEnabled = false
-            shrinkResources = false
         }
     }
 }
