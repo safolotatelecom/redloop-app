@@ -1,7 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- RedLoop Pro - Server Based - cPanel থেকে Data আসবে -->
-    <!-- Internet লাগবেই, না হলে cPanel থেকে Data আসবে না -->
+    <!-- RedLoop Pro - Permissions -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
@@ -13,11 +12,10 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
     <application
-    android:label="RedLoop Pro"
-    android:name="${applicationName}"
-    android:icon="@mipmap/ic_launcher"
-    android:usesCleartextTraffic="true">
-        
+        android:label="RedLoop Pro"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:usesCleartextTraffic="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
