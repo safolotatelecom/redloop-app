@@ -1,17 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter/services.dart';
 
 const String baseUrl = "https://redloop.safolota.com/api.php";
 const String apiKey = "redloop2026secure";
-
-String toWhatsAppNumber(String phone) {
-  String p = phone.replaceAll("+", "").replaceAll(" ", "").replaceAll("-", "");
-  if (p.startsWith("01")) p = "880" + p.substring(1);
-  return p;
-}
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({super.key});
@@ -19,139 +11,314 @@ class AdminPanelScreen extends StatefulWidget {
   State<AdminPanelScreen> createState() => _AdminPanelScreenState();
 }
 
-class _AdminPanelScreenState extends State<AdminPanelScreen> with SingleTickerProviderStateMixin {
-  late TabController _tab;
+class _AdminPanelScreenState extends State<AdminPanelScreen> {
+  int tab = 0; // 0=Users, 1=Password, 2=Blood Req, 3=Ratings, 4=Settings
   List users = [];
   List passReqs = [];
   List bloodReqs = [];
-  Map<String, TextEditingController> tempCtrls = {};
-  final waCtrl = TextEditingController();
-  final logoCtrl = TextEditingController();
+  List donorRatings = [];
+  List userRatings = [];
+  bool loading = true;
+  final tempCtrl = TextEditingController();
   final noticeCtrl = TextEditingController();
-  String animType = "zoom";
-  bool loading = false;
+  final waCtrl = TextEditingController();
 
   @override
-  void initState() { super.initState(); _tab = TabController(length: 4, vsync: this); loadAll(); }
+  void initState() {
+    super.initState();
+    loadAll();
+  }
 
-  Future<Map> api(String action, [Map<String,String> body = const {}]) async {
-    final res = await http.post(Uri.parse("$baseUrl?action=$action"), headers: {"X-API-KEY": apiKey}, body: body);
-    return jsonDecode(res.body);
+  Future<List> fetchAction(String action) async {
+    try {
+      final res = await http.get(Uri.parse("$baseUrl?action=$action"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 15));
+      final data = jsonDecode(res.body);
+      return data['data'] ?? [];
+    } catch (_) {
+      return [];
+    }
   }
 
   Future<void> loadAll() async {
     setState(() => loading = true);
+    final u = await fetchAction("all_users");
+    final p = await fetchAction("password_requests");
+    final b = await fetchAction("blood_requests");
+    Map<String, dynamic> ratingData = {"donor_ratings": [], "user_ratings": []};
     try {
-      final u = await api("all_users");
-      final p = await api("password_requests");
-      final b = await http.get(Uri.parse("$baseUrl?action=blood_requests_list"), headers: {"X-API-KEY": apiKey});
-      final s = await http.get(Uri.parse("$baseUrl?action=settings"), headers: {"X-API-KEY": apiKey});
-      if (mounted) setState(() {
-        users = u['data'] ?? []; passReqs = p['data'] ?? []; bloodReqs = jsonDecode(b.body)['data'] ?? [];
-        var sd = jsonDecode(s.body)['data'] ?? {};
-        waCtrl.text = sd['admin_whatsapp'] ?? ""; logoCtrl.text = sd['logo_url'] ?? ""; noticeCtrl.text = sd['notice'] ?? ""; animType = sd['animation_type'] ?? "zoom";
-      });
+      final r = await http.get(Uri.parse("$baseUrl?action=admin_all_ratings"), headers: {"X-API-KEY": apiKey}).timeout(const Duration(seconds: 15));
+      ratingData = jsonDecode(r.body);
     } catch (_) {}
-    if (mounted) setState(() => loading = false);
+    try {
+      final s = await http.get(Uri.parse("$baseUrl?action=settings"), headers: {"X-API-KEY": apiKey});
+      final sd = jsonDecode(s.body);
+      if (sd['success'] == true) {
+        noticeCtrl.text = sd['data']['notice'] ?? "";
+        waCtrl.text = sd['data']['admin_whatsapp'] ?? "";
+      }
+    } catch (_) {}
+    setState(() {
+      users = u;
+      passReqs = p;
+      bloodReqs = b;
+      donorRatings = ratingData['donor_ratings'] ?? [];
+      userRatings = ratingData['user_ratings'] ?? [];
+      loading = false;
+    });
   }
 
-  Future<void> approveReset(Map req) async {
-    String phone = req['phone'].toString();
-    String temp = tempCtrls[phone]?.text.trim() ?? "";
-    if (temp.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Temp password লিখুন"))); return; }
-    final data = await api("approve_reset", {"phone": phone, "temp_password": temp, "request_id": req['id'].toString()});
-    if (data['success'] == true) {
-      String wa = toWhatsAppNumber(phone);
-      String text = Uri.encodeComponent("Hello, Your RedLoop Temporary Password is: $temp\nLogin করে নতুন Password সেট করুন।\n- RedLoop Team");
-      final uri = Uri.parse("https://wa.me/$wa?text=$text");
-      if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Approved! WhatsApp খুলেছে, Send চাপুন. ${data['email_sent']==true ? 'Email এও গেছে।' : ''}")));
-      loadAll();
+  Future<void> approvePass(String phone) async {
+    if (tempCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Temp Password লিখুন")));
+      return;
     }
+    final res = await http.post(Uri.parse("$baseUrl?action=approve_password"), headers: {"X-API-KEY": apiKey}, body: {"phone": phone, "temp_password": tempCtrl.text.trim()});
+    final data = jsonDecode(res.body);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(data['message'])));
+    tempCtrl.clear();
+    loadAll();
   }
 
-  Future<void> saveSettings() async {
-    final d = await api("update_settings", {"logo_url": logoCtrl.text.trim(), "notice": noticeCtrl.text.trim(), "animation_type": animType, "admin_whatsapp": waCtrl.text.trim()});
-    if (!mounted) return; ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(d['message'] ?? "Saved")));
+  Future<void> deleteRating(String type, int id) async {
+    bool confirm = await showDialog(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text("Delete Rating?"),
+        content: const Text("এই রেটিং + মন্তব্য মুছে যাবে।"),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("Cancel")),
+          ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text("Delete", style: TextStyle(color: Colors.white))),
+        ],
+      ),
+    ) ?? false;
+    if (!confirm) return;
+    await http.post(Uri.parse("$baseUrl?action=delete_rating"), headers: {"X-API-KEY": apiKey}, body: {"type": type, "id": id.toString()});
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Rating deleted")));
+    loadAll();
   }
 
-  void showEditUser(Map u) {
-    final name = TextEditingController(text: u['name'] ?? "");
-    final phone = TextEditingController(text: u['phone'] ?? "");
-    final email = TextEditingController(text: u['email'] ?? "");
-    final bg = TextEditingController(text: u['blood_group'] ?? "");
-    final dist = TextEditingController(text: u['district'] ?? "");
-    String role = u['role'] ?? "donor";
-    showDialog(context: context, builder: (_) => AlertDialog(
-      title: const Text("Edit User"),
-      content: SingleChildScrollView(child: Column(children: [
-        TextField(controller: name, decoration: const InputDecoration(labelText: "Name")),
-        TextField(controller: phone, decoration: const InputDecoration(labelText: "Phone")),
-        TextField(controller: email, decoration: const InputDecoration(labelText: "Email")),
-        TextField(controller: bg, decoration: const InputDecoration(labelText: "Blood Group")),
-        TextField(controller: dist, decoration: const InputDecoration(labelText: "District")),
-        DropdownButton<String>(value: role, isExpanded: true, items: const [DropdownMenuItem(value: "donor", child: Text("Donor")), DropdownMenuItem(value: "user", child: Text("User")), DropdownMenuItem(value: "admin", child: Text("Admin"))], onChanged: (v) { role = v!; (context as Element).markNeedsBuild(); }),
-      ])),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text("Cancel")),
-        ElevatedButton(onPressed: () async {
-          final d = await api("edit_user", {"id": u['id'].toString(), "name": name.text.trim(), "phone": phone.text.trim(), "email": email.text.trim(), "blood_group": bg.text.trim(), "district": dist.text.trim(), "role": role});
-          if (!mounted) return; Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(d['message'] ?? ""))); loadAll();
-        }, child: const Text("Save")),
-      ],
-    ));
+  Widget tabButton(String label, int index, IconData icon) {
+    bool sel = tab == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => tab = index),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: sel ? Colors.red : Colors.grey.shade200,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            children: [
+              Icon(icon, color: sel ? Colors.white : Colors.black, size: 20),
+              const SizedBox(height: 2),
+              Text(label, style: TextStyle(color: sel ? Colors.white : Colors.black, fontSize: 11, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
-  Future<void> confirmDelete(Map u) async {
-    bool? ok = await showDialog(context: context, builder: (_) => AlertDialog(title: Text("Delete ${u['name']}?"), content: const Text("এই User কে ডিলিট করবেন?"), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text("No")), ElevatedButton(onPressed: () => Navigator.pop(context, true), style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text("Yes Delete", style: TextStyle(color: Colors.white)))]));
-    if (ok == true) { await api("delete_user", {"id": u['id'].toString()}); loadAll(); }
+  Widget ratingCard(Map r, String type) {
+    int stars = (r['stars'] as num).toInt();
+    bool isBad = stars <= 2;
+    String title = type == "donor"
+        ? "Donor: ${r['donor_name'] ?? ''} (${r['donor_phone']})"
+        : "User: ${r['user_name'] ?? ''} (${r['user_phone']})";
+    String sub = type == "donor"
+        ? "Rated by User: ${r['rater_name'] ?? ''} (${r['rater_phone']})"
+        : "Rated by Donor: ${r['donor_name'] ?? ''} (${r['donor_phone']})";
+    return Card(
+      color: isBad ? Colors.red.shade50 : Colors.white,
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: CircleAvatar(
+          backgroundColor: isBad ? Colors.red : Colors.amber,
+          child: Text("$stars⭐", style: const TextStyle(fontSize: 11, color: Colors.white)),
+        ),
+        title: Text(title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(sub, style: const TextStyle(fontSize: 11)),
+            const SizedBox(height: 4),
+            Text(
+              r['comment']?.toString().isEmpty == true ? "No comment" : "💬 ${r['comment']}",
+              style: TextStyle(fontSize: 12, color: isBad ? Colors.red : Colors.black87),
+            ),
+            Text(r['created_at'].toString().substring(0, 16), style: const TextStyle(fontSize: 10, color: Colors.grey)),
+          ],
+        ),
+        trailing: IconButton(
+          icon: const Icon(Icons.delete, color: Colors.red, size: 20),
+          onPressed: () => deleteRating(type, (r['id'] as num).toInt()),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text("Admin Panel"), backgroundColor: Colors.red, foregroundColor: Colors.white, bottom: TabBar(controller: _tab, indicatorColor: Colors.white, labelColor: Colors.white, unselectedLabelColor: Colors.white70, tabs: const [Tab(text: "Users"), Tab(text: "Pass Req"), Tab(text: "Blood Req"), Tab(text: "Settings")])),
-      body: loading ? const Center(child: CircularProgressIndicator(color: Colors.red)) : TabBarView(controller: _tab, children: [
-        users.isEmpty ? const Center(child: Text("No users")) : ListView.builder(itemCount: users.length, itemBuilder: (_, i) {
-          var u = users[i]; bool banned = (u['is_banned'] ?? 0) == 1;
-          return Card(margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5), child: ListTile(
-            leading: CircleAvatar(backgroundColor: banned ? Colors.grey : Colors.red, child: Text((u['name'] ?? "?").toString().substring(0, 1).toUpperCase(), style: const TextStyle(color: Colors.white))),
-            title: Text("${u['name']} ${banned ? '(BANNED)' : ''}", style: TextStyle(fontWeight: FontWeight.bold, color: banned ? Colors.grey : Colors.black)),
-            subtitle: Text("Phone: ${u['phone']}\nBlood: ${u['blood_group']} | ${u['district']} | ${u['role']}"),
-            isThreeLine: true,
-            trailing: PopupMenuButton<String>(onSelected: (v) async {
-              if (v == 'edit') showEditUser(u);
-              if (v == 'delete') confirmDelete(u);
-              if (v == 'ban') { await api("ban_user", {"id": u['id'].toString(), "ban": banned ? "0" : "1"}); loadAll(); }
-              if (v == 'copy') { await Clipboard.setData(ClipboardData(text: "Phone: ${u['phone']}")); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Copied"))); }
-            }, itemBuilder: (_) => [const PopupMenuItem(value: 'edit', child: Text("✏️ Edit")), PopupMenuItem(value: 'ban', child: Text(banned ? "✅ Unban" : "🚫 Ban")), const PopupMenuItem(value: 'delete', child: Text("🗑️ Delete")), const PopupMenuItem(value: 'copy', child: Text("📋 Copy Info"))]),
-          ));
-        }),
-        passReqs.isEmpty ? const Center(child: Text("No password requests")) : ListView.builder(itemCount: passReqs.length, itemBuilder: (_, i) {
-          var r = passReqs[i]; String phone = r['phone'].toString(); tempCtrls.putIfAbsent(phone, () => TextEditingController());
-          bool pending = r['status'] == 'pending';
-          return Card(margin: const EdgeInsets.all(10), child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text("Phone: $phone", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            Text("Status: ${r['status']} | ${r['created_at']}"),
-            if (pending) ...[const SizedBox(height: 10), TextField(controller: tempCtrls[phone], decoration: const InputDecoration(labelText: "Temp Password (যেমন: 123456)", border: OutlineInputBorder())), const SizedBox(height: 10), SizedBox(width: double.infinity, height: 45, child: ElevatedButton.icon(onPressed: () => approveReset(r), icon: const Icon(Icons.send, color: Colors.white), label: const Text("Approve & Send WhatsApp + Email", style: TextStyle(color: Colors.white)), style: ElevatedButton.styleFrom(backgroundColor: Colors.green))) ]
-            else Text("Temp ছিলো: ${r['temp_password']}"),
-          ])));
-        }),
-        bloodReqs.isEmpty ? const Center(child: Text("No blood requests")) : ListView.builder(itemCount: bloodReqs.length, itemBuilder: (_, i) {
-          var r = bloodReqs[i];
-          return Card(margin: const EdgeInsets.all(10), child: ListTile(leading: CircleAvatar(backgroundColor: Colors.red, child: Text((r['blood_group'] ?? "?").toString(), style: const TextStyle(color: Colors.white, fontSize: 12))), title: Text("${r['patient_name']} - ${r['blood_group']} (${r['bags']} bag)"), subtitle: Text("Hospital: ${r['hospital']}\nPhone: ${r['phone']} | ${r['created_at']}"), isThreeLine: true, trailing: IconButton(icon: const Icon(Icons.call, color: Colors.green), onPressed: () async { final uri = Uri.parse("tel:${r['phone']}"); if (await canLaunchUrl(uri)) await launchUrl(uri); })));
-        }),
-        SingleChildScrollView(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text("Admin WhatsApp Number (Recovery Request আসবে এখানে)", style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8), TextField(controller: waCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(labelText: "যেমন: 8801712345678", border: OutlineInputBorder())),
-          const SizedBox(height: 16), const Text("App Notice", style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 8), TextField(controller: noticeCtrl, decoration: const InputDecoration(border: OutlineInputBorder())),
-          const SizedBox(height: 16), const Text("Logo URL", style: TextStyle(fontWeight: FontWeight.bold)), const SizedBox(height: 8), TextField(controller: logoCtrl, decoration: const InputDecoration(border: OutlineInputBorder())),
-          const SizedBox(height: 16), const Text("Animation", style: TextStyle(fontWeight: FontWeight.bold)), DropdownButton<String>(value: animType, isExpanded: true, items: const [DropdownMenuItem(value: "zoom", child: Text("Zoom")), DropdownMenuItem(value: "fade", child: Text("Fade")), DropdownMenuItem(value: "rotate", child: Text("Rotate"))], onChanged: (v) => setState(() => animType = v!)),
-          const SizedBox(height: 20), SizedBox(width: double.infinity, height: 50, child: ElevatedButton(onPressed: saveSettings, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: const Text("Save Settings", style: TextStyle(color: Colors.white)))),
-        ])),
-      ]),
-      floatingActionButton: FloatingActionButton(onPressed: loadAll, backgroundColor: Colors.red, child: const Icon(Icons.refresh, color: Colors.white)),
+      appBar: AppBar(
+        title: const Text("Admin Panel"),
+        backgroundColor: Colors.red,
+        foregroundColor: Colors.white,
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: loadAll)],
+      ),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
+              children: [
+                tabButton("Users", 0, Icons.people),
+                const SizedBox(width: 6),
+                tabButton("Password", 1, Icons.lock),
+                const SizedBox(width: 6),
+                tabButton("Blood Req", 2, Icons.bloodtype),
+                const SizedBox(width: 6),
+                tabButton("Ratings", 3, Icons.star),
+                const SizedBox(width: 6),
+                tabButton("Settings", 4, Icons.settings),
+              ],
+            ),
+          ),
+          Expanded(
+            child: loading
+                ? const Center(child: CircularProgressIndicator(color: Colors.red))
+                : buildTabContent(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget buildTabContent() {
+    if (tab == 0) {
+      if (users.isEmpty) return const Center(child: Text("No users"));
+      return ListView.builder(
+        itemCount: users.length,
+        itemBuilder: (_, i) {
+          var u = users[i];
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: ListTile(
+              leading: CircleAvatar(backgroundColor: Colors.red, child: Text((u['blood_group'] ?? "?").toString(), style: const TextStyle(color: Colors.white, fontSize: 11))),
+              title: Text(u['name'] ?? ""),
+              subtitle: Text("Phone: ${u['phone']} | District: ${u['district']} | Role: ${u['role']}"),
+            ),
+          );
+        },
+      );
+    }
+
+    if (tab == 1) {
+      if (passReqs.isEmpty) return const Center(child: Text("No pending password requests"));
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: TextField(
+              controller: tempCtrl,
+              decoration: const InputDecoration(labelText: "Temp Password (যেমন: 1234)", border: OutlineInputBorder()),
+            ),
+          ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: passReqs.length,
+              itemBuilder: (_, i) {
+                var p = passReqs[i];
+                return Card(
+                  margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  child: ListTile(
+                    title: Text("Phone: ${p['phone']}"),
+                    subtitle: Text("Requested: ${p['created_at']}"),
+                    trailing: ElevatedButton(
+                      onPressed: () => approvePass(p['phone'].toString()),
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                      child: const Text("Approve", style: TextStyle(color: Colors.white)),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (tab == 2) {
+      if (bloodReqs.isEmpty) return const Center(child: Text("No blood requests"));
+      return ListView.builder(
+        itemCount: bloodReqs.length,
+        itemBuilder: (_, i) {
+          var b = bloodReqs[i];
+          return Card(
+            margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            child: ListTile(
+              leading: CircleAvatar(backgroundColor: Colors.red, child: Text((b['blood_group'] ?? "?").toString(), style: const TextStyle(color: Colors.white, fontSize: 11))),
+              title: Text("${b['name']} - ${b['blood_group']}"),
+              subtitle: Text("Hospital: ${b['hospital']} | Phone: ${b['phone']} | ${b['district']}"),
+              trailing: Text(b['status'] ?? "", style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          );
+        },
+      );
+    }
+
+    if (tab == 3) {
+      return SingleChildScrollView(
+        padding: const EdgeInsets.all(10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
+              child: Text(
+                "Total: ${donorRatings.length} Donor Ratings | ${userRatings.length} User Ratings",
+                style: const TextStyle(fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 14),
+            const Text("⭐ Donor Ratings (User → Donor)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+            const Text("ইউজাররা ডোনারদের কী রেটিং দিয়েছে", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 8),
+            if (donorRatings.isEmpty) const Text("এখনো কোনো Donor Rating নেই", style: TextStyle(color: Colors.grey)),
+            ...donorRatings.map((r) => ratingCard(r, "donor")).toList(),
+            const SizedBox(height: 20),
+            const Text("⭐ User Ratings (Donor → User)", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red)),
+            const Text("ডোনাররা ইউজারদের কী রেটিং দিয়েছে", style: TextStyle(color: Colors.grey, fontSize: 12)),
+            const SizedBox(height: 8),
+            if (userRatings.isEmpty) const Text("এখনো কোনো User Rating নেই", style: TextStyle(color: Colors.grey)),
+            ...userRatings.map((r) => ratingCard(r, "user")).toList(),
+            const SizedBox(height: 20),
+            const Text("Note: ১-২ ⭐ রেটিং লাল দেখাবে। খারাপ মন্তব্য হলে Delete করতে পারবেন।", style: TextStyle(color: Colors.grey, fontSize: 12)),
+          ],
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text("Notice", style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          TextField(controller: noticeCtrl, maxLines: 2, decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "Donate Blood, Save Life")),
+          const SizedBox(height: 16),
+          const Text("Admin WhatsApp", style: TextStyle(fontWeight: FontWeight.bold)),
+          const SizedBox(height: 8),
+          TextField(controller: waCtrl, keyboardType: TextInputType.phone, decoration: const InputDecoration(border: OutlineInputBorder(), hintText: "88017XXXXXXXX")),
+          const SizedBox(height: 20),
+          const Text("Settings change করতে cPanel থেকে settings টেবিলে বদলাতে হবে। এই version এ শুধু দেখা যাবে।", style: TextStyle(color: Colors.grey, fontSize: 12)),
+        ],
+      ),
     );
   }
 }
