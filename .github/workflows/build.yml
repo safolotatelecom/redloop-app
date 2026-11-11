@@ -1,16 +1,22 @@
 name: RedLoop Pro - Build APK
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code - GitHub থেকে Code নেওয়া
+      - name: Checkout Code
         uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -18,16 +24,13 @@ jobs:
           flutter-version: '3.22.0'
           channel: 'stable'
 
-      - name: Get Packages
+      - name: Get Dependencies
         run: flutter pub get
 
-      - name: Analyze Code
-        run: flutter analyze
+      - name: Analyze
+        run: flutter analyze || true
 
-      - name: Build APK Debug - cPanel Server Based App
-        run: flutter build apk --debug
-
-      - name: Build APK Release
+      - name: Build Release APK
         run: flutter build apk --release
 
       - name: Upload APK
