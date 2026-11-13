@@ -1,3 +1,4 @@
+
 name: redloop_pro
 description: "RedLoop Pro - Blood Donation App - রক্ত দিন, জীবন বাঁচান"
 publish_to: 'none'
@@ -13,6 +14,7 @@ dependencies:
   shared_preferences: ^2.2.0
   local_auth: ^2.1.0
   cupertino_icons: ^1.0.2
+  geolocator: ^13.0.2
 
 dev_dependencies:
   flutter_test:
