@@ -1,9 +1,9 @@
 
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'api_helper.dart';
+import 'donor_profile_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -31,12 +31,10 @@ class RedLoopApp extends StatelessWidget {
           primary: red,
           surface: Colors.white,
         ),
-        fontFamily: 'Roboto',
         appBarTheme: const AppBarTheme(
           backgroundColor: background,
           foregroundColor: dark,
           elevation: 0,
-          centerTitle: false,
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
@@ -66,10 +64,6 @@ class RedLoopApp extends StatelessWidget {
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14),
             ),
-            textStyle: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-            ),
           ),
         ),
       ),
@@ -91,22 +85,18 @@ void showMessage(BuildContext context, String message) {
 
 String errorMessage(Map<String, dynamic> result) {
   final errors = result['errors'];
-
   if (errors is Map && errors.isNotEmpty) {
     final first = errors.values.first;
     if (first is List && first.isNotEmpty) {
       return first.first.toString();
     }
   }
-
   return result['message']?.toString() ?? 'অনুরোধটি সম্পন্ন হয়নি।';
 }
 
 Map<String, dynamic> userFrom(Map<String, dynamic> result) {
   final value = result['user'];
-  if (value is Map) {
-    return Map<String, dynamic>.from(value);
-  }
+  if (value is Map) return Map<String, dynamic>.from(value);
   return result;
 }
 
@@ -125,10 +115,8 @@ class _SplashScreenState extends State<SplashScreen> {
   }
 
   Future<void> _start() async {
-    await Future.delayed(const Duration(milliseconds: 900));
-
+    await Future.delayed(const Duration(milliseconds: 700));
     final token = await ApiService.getToken();
-
     if (!mounted) return;
 
     if (token == null || token.isEmpty) {
@@ -137,7 +125,6 @@ class _SplashScreenState extends State<SplashScreen> {
     }
 
     final result = await ApiService.getCurrentUser();
-
     if (!mounted) return;
 
     if (result['success'] == true) {
@@ -168,27 +155,14 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 104,
-              height: 104,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(32),
-              ),
-              child: const Icon(
-                Icons.bloodtype_rounded,
-                color: red,
-                size: 70,
-              ),
-            ),
-            const SizedBox(height: 22),
+            const BrandMark(size: 100, light: true),
+            const SizedBox(height: 20),
             const Text(
               'RedLoop Pro',
               style: TextStyle(
                 color: Colors.white,
-                fontSize: 32,
+                fontSize: 30,
                 fontWeight: FontWeight.w900,
-                letterSpacing: 0.5,
               ),
             ),
             const SizedBox(height: 8),
@@ -196,15 +170,8 @@ class _SplashScreenState extends State<SplashScreen> {
               'রক্ত দিন, জীবন বাঁচান',
               style: TextStyle(color: Colors.white70, fontSize: 16),
             ),
-            const SizedBox(height: 34),
-            const SizedBox(
-              width: 25,
-              height: 25,
-              child: CircularProgressIndicator(
-                color: Colors.white,
-                strokeWidth: 2.5,
-              ),
-            ),
+            const SizedBox(height: 30),
+            const CircularProgressIndicator(color: Colors.white),
           ],
         ),
       ),
@@ -240,7 +207,6 @@ class _LoginScreenState extends State<LoginScreen> {
     }
 
     setState(() => loading = true);
-
     final result = await ApiService.login(
       identifier: identifier.text.trim(),
       password: password.text,
@@ -266,7 +232,6 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> fingerprintLogin() async {
     final token = await ApiService.getToken();
-
     if (token == null || token.isEmpty) {
       showMessage(context, 'আগে পাসওয়ার্ড দিয়ে একবার Login করুন।');
       return;
@@ -274,8 +239,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final auth = LocalAuthentication();
-      final available = await auth.canCheckBiometrics ||
-          await auth.isDeviceSupported();
+      final available =
+          await auth.canCheckBiometrics || await auth.isDeviceSupported();
 
       if (!available) {
         showMessage(context, 'এই ডিভাইসে বায়োমেট্রিক সুবিধা নেই।');
@@ -305,9 +270,7 @@ class _LoginScreenState extends State<LoginScreen> {
         showMessage(context, 'সেশন শেষ হয়েছে। আবার Login করুন।');
       }
     } catch (_) {
-      if (mounted) {
-        showMessage(context, 'বায়োমেট্রিক যাচাই করা যায়নি।');
-      }
+      if (mounted) showMessage(context, 'বায়োমেট্রিক যাচাই করা যায়নি।');
     }
   }
 
@@ -331,7 +294,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: dark,
                   ),
                 ),
-                const SizedBox(height: 7),
+                const SizedBox(height: 8),
                 const Text(
                   'আপনার RedLoop অ্যাকাউন্টে প্রবেশ করুন',
                   style: TextStyle(color: muted),
@@ -361,7 +324,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
                 Row(
                   children: [
                     Checkbox(
@@ -374,7 +336,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     const Text('Remember Me'),
                     const Spacer(),
                     IconButton(
-                      tooltip: 'Fingerprint Login',
                       onPressed: fingerprintLogin,
                       icon: const Icon(Icons.fingerprint, color: red),
                     ),
@@ -384,17 +345,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 ElevatedButton(
                   onPressed: loading ? null : login,
                   child: loading
-                      ? const SizedBox(
-                          height: 22,
-                          width: 22,
-                          child: CircularProgressIndicator(
-                            color: Colors.white,
-                            strokeWidth: 2,
-                          ),
-                        )
+                      ? const CircularProgressIndicator(color: Colors.white)
                       : const Text('Login করুন'),
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 20),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -464,11 +418,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   }
 
   Future<void> loadTerms() async {
-    final result = await ApiService.get(
-      '/terms',
-      authenticated: false,
-    );
-
+    final result = await ApiService.get('/terms', authenticated: false);
     if (!mounted) return;
 
     if (result['success'] == true) {
@@ -477,9 +427,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           result['content']?.toString() ??
           'RedLoop Pro ব্যবহারের শর্তাবলি প্রযোজ্য।';
     } else {
-      termsText = 'শর্তাবলি এখন লোড করা যাচ্ছে না। পরে আবার চেষ্টা করুন।';
+      termsText = 'শর্তাবলি এখন লোড করা যাচ্ছে না।';
     }
-
     setState(() {});
   }
 
@@ -488,9 +437,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('ব্যবহারের শর্তাবলি'),
-        content: SingleChildScrollView(
-          child: Text(termsText),
-        ),
+        content: SingleChildScrollView(child: Text(termsText)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
@@ -522,7 +469,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
     }
 
     setState(() => loading = true);
-
     final result = await ApiService.register(
       name: name.text.trim(),
       email: email.text.trim(),
@@ -538,7 +484,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     if (result['success'] == true) {
       final token = await ApiService.getToken();
-
       if (!mounted) return;
 
       if (token != null && token.isNotEmpty) {
@@ -562,102 +507,97 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('নতুন অ্যাকাউন্ট')),
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(22),
-          children: [
-            const Text(
-              'RedLoop Pro-তে যোগ দিন',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: dark,
-              ),
+      body: ListView(
+        padding: const EdgeInsets.all(22),
+        children: [
+          const Text(
+            'RedLoop Pro-তে যোগ দিন',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: dark,
             ),
-            const SizedBox(height: 8),
-            const Text(
-              'একটি অ্যাকাউন্ট দিয়ে রক্ত চাইতে ও রক্ত দিতে পারবেন।',
-              style: TextStyle(color: muted),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'একটি অ্যাকাউন্ট দিয়ে রক্ত চাইতে ও রক্ত দিতে পারবেন।',
+            style: TextStyle(color: muted),
+          ),
+          const SizedBox(height: 24),
+          TextField(
+            controller: name,
+            textCapitalization: TextCapitalization.words,
+            decoration: const InputDecoration(
+              labelText: 'আপনার নাম',
+              prefixIcon: Icon(Icons.person_outline),
             ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: name,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'আপনার নাম',
-                prefixIcon: Icon(Icons.person_outline),
-              ),
+          ),
+          const SizedBox(height: 13),
+          TextField(
+            controller: email,
+            keyboardType: TextInputType.emailAddress,
+            decoration: const InputDecoration(
+              labelText: 'ইমেইল',
+              prefixIcon: Icon(Icons.email_outlined),
             ),
-            const SizedBox(height: 13),
-            TextField(
-              controller: email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                labelText: 'ইমেইল',
-                prefixIcon: Icon(Icons.email_outlined),
-              ),
+          ),
+          const SizedBox(height: 13),
+          TextField(
+            controller: phone,
+            keyboardType: TextInputType.phone,
+            decoration: const InputDecoration(
+              labelText: 'মোবাইল নম্বর',
+              prefixIcon: Icon(Icons.phone_outlined),
             ),
-            const SizedBox(height: 13),
-            TextField(
-              controller: phone,
-              keyboardType: TextInputType.phone,
-              decoration: const InputDecoration(
-                labelText: 'মোবাইল নম্বর',
-                prefixIcon: Icon(Icons.phone_outlined),
-              ),
-            ),
-            const SizedBox(height: 13),
-            TextField(
-              controller: password,
-              obscureText: obscure,
-              decoration: InputDecoration(
-                labelText: 'পাসওয়ার্ড',
-                prefixIcon: const Icon(Icons.lock_outline),
-                suffixIcon: IconButton(
-                  onPressed: () => setState(() => obscure = !obscure),
-                  icon: Icon(
-                    obscure ? Icons.visibility : Icons.visibility_off,
-                  ),
+          ),
+          const SizedBox(height: 13),
+          TextField(
+            controller: password,
+            obscureText: obscure,
+            decoration: InputDecoration(
+              labelText: 'পাসওয়ার্ড',
+              prefixIcon: const Icon(Icons.lock_outline),
+              suffixIcon: IconButton(
+                onPressed: () => setState(() => obscure = !obscure),
+                icon: Icon(
+                  obscure ? Icons.visibility : Icons.visibility_off,
                 ),
               ),
             ),
-            const SizedBox(height: 13),
-            TextField(
-              controller: confirmPassword,
-              obscureText: obscure,
-              decoration: const InputDecoration(
-                labelText: 'পাসওয়ার্ড নিশ্চিত করুন',
-                prefixIcon: Icon(Icons.lock_reset),
+          ),
+          const SizedBox(height: 13),
+          TextField(
+            controller: confirmPassword,
+            obscureText: obscure,
+            decoration: const InputDecoration(
+              labelText: 'পাসওয়ার্ড নিশ্চিত করুন',
+              prefixIcon: Icon(Icons.lock_reset),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Checkbox(
+                value: acceptedTerms,
+                activeColor: red,
+                onChanged: (value) {
+                  setState(() => acceptedTerms = value ?? false);
+                },
               ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Checkbox(
-                  value: acceptedTerms,
-                  activeColor: red,
-                  onChanged: (value) {
-                    setState(() => acceptedTerms = value ?? false);
-                  },
-                ),
-                const Expanded(
-                  child: Text('আমি ব্যবহারের শর্তাবলি গ্রহণ করছি।'),
-                ),
-                TextButton(
-                  onPressed: showTerms,
-                  child: const Text('পড়ুন'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton(
-              onPressed: loading ? null : register,
-              child: loading
-                  ? const CircularProgressIndicator(color: Colors.white)
-                  : const Text('অ্যাকাউন্ট তৈরি করুন'),
-            ),
-          ],
-        ),
+              const Expanded(
+                child: Text('আমি ব্যবহারের শর্তাবলি গ্রহণ করছি।'),
+              ),
+              TextButton(onPressed: showTerms, child: const Text('পড়ুন')),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton(
+            onPressed: loading ? null : register,
+            child: loading
+                ? const CircularProgressIndicator(color: Colors.white)
+                : const Text('অ্যাকাউন্ট তৈরি করুন'),
+          ),
+        ],
       ),
     );
   }
@@ -674,8 +614,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int selectedIndex = 0;
-
-  String get userName => widget.user['name']?.toString() ?? 'ব্যবহারকারী';
 
   @override
   Widget build(BuildContext context) {
@@ -872,6 +810,18 @@ class DashboardPage extends StatelessWidget {
                 ),
               ),
               ActionTile(
+                icon: Icons.person_pin_circle_outlined,
+                title: 'ডোনার প্রোফাইল',
+                subtitle: 'রক্তদানের তথ্য সেট করুন',
+                color: const Color(0xFF168C78),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DonorProfileScreen(),
+                  ),
+                ),
+              ),
+              ActionTile(
                 icon: Icons.list_alt,
                 title: 'আমার অনুরোধ',
                 subtitle: 'অনুরোধের অবস্থা',
@@ -887,7 +837,7 @@ class DashboardPage extends StatelessWidget {
                 icon: Icons.notifications_active_outlined,
                 title: 'নোটিফিকেশন',
                 subtitle: 'নতুন আপডেট',
-                color: const Color(0xFF168C78),
+                color: const Color(0xFF9B62B6),
                 onTap: () => Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -899,12 +849,10 @@ class DashboardPage extends StatelessWidget {
                 icon: Icons.support_agent,
                 title: 'সহায়তা',
                 subtitle: 'সমস্যা জানাতে',
-                color: const Color(0xFF9B62B6),
+                color: const Color(0xFF5366C9),
                 onTap: () => Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => const HelpPage(),
-                  ),
+                  MaterialPageRoute(builder: (_) => const HelpPage()),
                 ),
               ),
             ],
@@ -975,7 +923,6 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
     }
 
     setState(() => loading = true);
-
     final result = await ApiService.post(
       '/blood-requests',
       body: {
@@ -1007,14 +954,12 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
       firstDate: DateTime.now(),
       lastDate: DateTime.now().add(const Duration(days: 30)),
     );
-
     if (date == null || !mounted) return;
 
     final time = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(neededAt),
     );
-
     if (time == null) return;
 
     setState(() {
@@ -1058,10 +1003,7 @@ class _CreateRequestPageState extends State<CreateRequestPage> {
             items: const [
               'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-',
             ].map((group) {
-              return DropdownMenuItem(
-                value: group,
-                child: Text(group),
-              );
+              return DropdownMenuItem(value: group, child: Text(group));
             }).toList(),
             onChanged: (value) {
               if (value != null) setState(() => bloodGroup = value);
@@ -1163,14 +1105,11 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
 
   Future<void> load() async {
     setState(() => loading = true);
-
     final result = await ApiService.get('/blood-requests');
-
     if (!mounted) return;
 
-    final raw = result['requests'] ??
-        result['data'] ??
-        result['blood_requests'];
+    final raw =
+        result['requests'] ?? result['data'] ?? result['blood_requests'];
 
     if (result['success'] == true) {
       if (raw is List) {
@@ -1181,7 +1120,6 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
         requests = [];
       }
     }
-
     setState(() => loading = false);
   }
 
@@ -1219,11 +1157,11 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                     padding: const EdgeInsets.all(16),
                     itemCount: requests.length,
                     itemBuilder: (context, index) {
-                      final item = Map<String, dynamic>.from(
-                        requests[index] as Map,
+                      return RequestCard(
+                        item: Map<String, dynamic>.from(
+                          requests[index] as Map,
+                        ),
                       );
-
-                      return RequestCard(item: item);
                     },
                   ),
                 ),
@@ -1342,13 +1280,10 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Future<void> load() async {
     setState(() => loading = true);
-
     final result = await ApiService.get('/notifications');
-
     if (!mounted) return;
 
     final raw = result['notifications'] ?? result['data'];
-
     if (result['success'] == true) {
       if (raw is List) {
         notifications = raw;
@@ -1358,13 +1293,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
         notifications = [];
       }
     }
-
     setState(() => loading = false);
   }
 
   Future<void> markRead(String id) async {
     final result = await ApiService.patch('/notifications/$id/read');
-
     if (result['success'] == true) {
       load();
     } else if (mounted) {
@@ -1374,7 +1307,6 @@ class _NotificationsPageState extends State<NotificationsPage> {
 
   Future<void> markAllRead() async {
     final result = await ApiService.patch('/notifications/read-all');
-
     if (result['success'] == true) {
       load();
     } else if (mounted) {
@@ -1424,10 +1356,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
                         child: ListTile(
                           leading: CircleAvatar(
                             backgroundColor: red.withOpacity(0.1),
-                            child: const Icon(
-                              Icons.bloodtype,
-                              color: red,
-                            ),
+                            child: const Icon(Icons.bloodtype, color: red),
                           ),
                           title: Text(
                             item['title']?.toString() ?? 'নোটিফিকেশন',
@@ -1435,14 +1364,9 @@ class _NotificationsPageState extends State<NotificationsPage> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          subtitle: Text(
-                            item['body']?.toString() ?? '',
-                          ),
+                          subtitle: Text(item['body']?.toString() ?? ''),
                           trailing: isRead
-                              ? const Icon(
-                                  Icons.done,
-                                  color: muted,
-                                )
+                              ? const Icon(Icons.done, color: muted)
                               : IconButton(
                                   onPressed: id.isEmpty
                                       ? null
@@ -1500,7 +1424,20 @@ class ProfilePage extends StatelessWidget {
           const SizedBox(height: 28),
           ProfileInfo(icon: Icons.phone, label: 'মোবাইল', value: phone),
           ProfileInfo(icon: Icons.email, label: 'ইমেইল', value: email),
-          const SizedBox(height: 22),
+          const SizedBox(height: 14),
+          OutlinedButton.icon(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const DonorProfileScreen(),
+                ),
+              );
+            },
+            icon: const Icon(Icons.bloodtype, color: red),
+            label: const Text('ডোনার প্রোফাইল ও লোকেশন'),
+          ),
+          const SizedBox(height: 12),
           OutlinedButton.icon(
             onPressed: () {
               Navigator.push(
@@ -1513,12 +1450,9 @@ class ProfilePage extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: dark,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: dark),
             onPressed: () async {
               final result = await ApiService.logout();
-
               if (!context.mounted) return;
 
               if (result['success'] == true) {
@@ -1568,7 +1502,6 @@ class _HelpPageState extends State<HelpPage> {
     }
 
     setState(() => loading = true);
-
     final result = await ApiService.post(
       '/help-tickets',
       body: {
@@ -1651,10 +1584,7 @@ class BrandHeader extends StatelessWidget {
           ),
         ),
         SizedBox(height: 5),
-        Text(
-          'রক্ত দিন, জীবন বাঁচান',
-          style: TextStyle(color: muted),
-        ),
+        Text('রক্ত দিন, জীবন বাঁচান', style: TextStyle(color: muted)),
       ],
     );
   }
@@ -1662,8 +1592,13 @@ class BrandHeader extends StatelessWidget {
 
 class BrandMark extends StatelessWidget {
   final double size;
+  final bool light;
 
-  const BrandMark({super.key, required this.size});
+  const BrandMark({
+    super.key,
+    required this.size,
+    this.light = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1671,7 +1606,7 @@ class BrandMark extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        color: red.withOpacity(0.1),
+        color: light ? Colors.white : red.withOpacity(0.1),
         borderRadius: BorderRadius.circular(size * 0.3),
       ),
       child: Icon(
@@ -1726,10 +1661,7 @@ class ActionTile extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(
-                  color: muted,
-                  fontSize: 11,
-                ),
+                style: const TextStyle(color: muted, fontSize: 11),
               ),
             ],
           ),
@@ -1788,7 +1720,10 @@ class ProfileInfo extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(label, style: const TextStyle(color: muted, fontSize: 12)),
+                Text(
+                  label,
+                  style: const TextStyle(color: muted, fontSize: 12),
+                ),
                 const SizedBox(height: 3),
                 Text(
                   value.isEmpty ? 'তথ্য নেই' : value,
