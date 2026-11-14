@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 
 import 'api_helper.dart';
@@ -68,6 +67,129 @@ class _DonorOpportunitiesScreenState
     }
   }
 
+  Future<void> _showAcceptedDetails(
+    Map<String, dynamic> details,
+  ) async {
+    final name = _value(
+      details,
+      ['requester_name'],
+    );
+
+    final phone = _value(
+      details,
+      ['requester_phone', 'phone'],
+    );
+
+    final hospital = _value(
+      details,
+      ['hospital_name'],
+    );
+
+    final district = _value(
+      details,
+      ['district'],
+    );
+
+    final area = _value(
+      details,
+      ['area'],
+    );
+
+    final neededAt = _formatDate(
+      _value(details, ['needed_at']),
+    );
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Row(
+          children: [
+            Icon(
+              Icons.check_circle,
+              color: Color(0xFF168C78),
+              size: 26,
+            ),
+            SizedBox(width: 9),
+            Expanded(
+              child: Text(
+                'অনুরোধ গ্রহণ সফল',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'এখন অনুরোধকারীর যোগাযোগের তথ্য দেখতে পারবেন।',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.black54,
+                ),
+              ),
+              const SizedBox(height: 18),
+              _infoRow(
+                Icons.person_outline,
+                'অনুরোধকারীর নাম',
+                name,
+              ),
+              _infoRow(
+                Icons.phone_outlined,
+                'মোবাইল নম্বর',
+                phone,
+              ),
+              _infoRow(
+                Icons.local_hospital_outlined,
+                'হাসপাতাল',
+                hospital,
+              ),
+              _infoRow(
+                Icons.location_on_outlined,
+                'জেলা',
+                district,
+              ),
+              _infoRow(
+                Icons.place_outlined,
+                'এলাকা',
+                area,
+              ),
+              _infoRow(
+                Icons.calendar_month_outlined,
+                'রক্ত প্রয়োজন',
+                neededAt,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF168C78),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+            ),
+            child: const Text('ঠিক আছে'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _respond(
     Map<String, dynamic> request,
     String response,
@@ -86,7 +208,9 @@ class _DonorOpportunitiesScreenState
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(18),
         ),
-        title: Text(isAccept ? 'অনুরোধ গ্রহণ করবেন?' : 'প্রত্যাখ্যান করবেন?'),
+        title: Text(
+          isAccept ? 'অনুরোধ গ্রহণ করবেন?' : 'প্রত্যাখ্যান করবেন?',
+        ),
         content: Text(
           isAccept
               ? 'আপনি এই রক্তের অনুরোধটি গ্রহণ করতে যাচ্ছেন।'
@@ -99,7 +223,8 @@ class _DonorOpportunitiesScreenState
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: isAccept ? const Color(0xFF168C78) : _primary,
+              backgroundColor:
+                  isAccept ? const Color(0xFF168C78) : _primary,
               foregroundColor: Colors.white,
             ),
             onPressed: () => Navigator.pop(context, true),
@@ -122,17 +247,33 @@ class _DonorOpportunitiesScreenState
       if (!mounted) return;
 
       if (result['success'] == true) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              isAccept
-                  ? 'অনুরোধটি গ্রহণ করা হয়েছে।'
-                  : 'অনুরোধটি প্রত্যাখ্যান করা হয়েছে।',
-            ),
-            backgroundColor: const Color(0xFF168C78),
-          ),
-        );
+        if (isAccept) {
+          final details = result['accepted_details'];
 
+          if (details is Map) {
+            await _showAcceptedDetails(
+              Map<String, dynamic>.from(details),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'অনুরোধ গ্রহণ হয়েছে, কিন্তু যোগাযোগের তথ্য পাওয়া যায়নি।',
+                ),
+                backgroundColor: _primary,
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('অনুরোধটি প্রত্যাখ্যান করা হয়েছে।'),
+              backgroundColor: _primary,
+            ),
+          );
+        }
+
+        if (!mounted) return;
         await _loadOpportunities();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -146,6 +287,7 @@ class _DonorOpportunitiesScreenState
       }
     } catch (e) {
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('সার্ভারের সঙ্গে যোগাযোগ করা যায়নি।'),
@@ -159,14 +301,19 @@ class _DonorOpportunitiesScreenState
     }
   }
 
-  String _value(Map<String, dynamic> data, List<String> keys,
-      {String fallback = 'উল্লেখ নেই'}) {
+  String _value(
+    Map<String, dynamic> data,
+    List<String> keys, {
+    String fallback = 'উল্লেখ নেই',
+  }) {
     for (final key in keys) {
       final value = data[key];
+
       if (value != null && value.toString().trim().isNotEmpty) {
         return value.toString();
       }
     }
+
     return fallback;
   }
 
@@ -185,13 +332,21 @@ class _DonorOpportunitiesScreenState
     }
   }
 
-  Widget _infoRow(IconData icon, String title, String value) {
+  Widget _infoRow(
+    IconData icon,
+    String title,
+    String value,
+  ) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 11),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 19, color: Colors.blueGrey.shade500),
+          Icon(
+            icon,
+            size: 19,
+            color: Colors.blueGrey.shade500,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -205,7 +360,7 @@ class _DonorOpportunitiesScreenState
                   ),
                 ),
                 const SizedBox(height: 2),
-                Text(
+                SelectableText(
                   value,
                   style: const TextStyle(
                     fontSize: 13,
@@ -350,20 +505,32 @@ class _DonorOpportunitiesScreenState
             padding: const EdgeInsets.fromLTRB(16, 15, 16, 5),
             child: Column(
               children: [
-                _infoRow(Icons.local_hospital_outlined, 'হাসপাতাল', hospital),
+                _infoRow(
+                  Icons.local_hospital_outlined,
+                  'হাসপাতাল',
+                  hospital,
+                ),
                 _infoRow(
                   Icons.location_on_outlined,
                   'জেলা ও এলাকা',
                   '$district, $area',
                 ),
-                _infoRow(Icons.calendar_month_outlined, 'রক্ত প্রয়োজন', neededAt),
+                _infoRow(
+                  Icons.calendar_month_outlined,
+                  'রক্ত প্রয়োজন',
+                  neededAt,
+                ),
                 _infoRow(
                   Icons.health_and_safety_outlined,
                   'রোগীর অবস্থা',
                   condition,
                 ),
                 if (notes.isNotEmpty)
-                  _infoRow(Icons.notes_outlined, 'অতিরিক্ত তথ্য', notes),
+                  _infoRow(
+                    Icons.notes_outlined,
+                    'অতিরিক্ত তথ্য',
+                    notes,
+                  ),
               ],
             ),
           ),
@@ -442,7 +609,9 @@ class _DonorOpportunitiesScreenState
                           )
                         : const Text(
                             'রক্ত দিতে আগ্রহী',
-                            style: TextStyle(fontWeight: FontWeight.w700),
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                            ),
                           ),
                   ),
                 ),
