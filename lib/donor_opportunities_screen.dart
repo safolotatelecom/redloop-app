@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+
 import 'api_helper.dart';
 
 class DonorOpportunitiesScreen extends StatefulWidget {
@@ -13,13 +14,12 @@ class DonorOpportunitiesScreen extends StatefulWidget {
 class _DonorOpportunitiesScreenState
     extends State<DonorOpportunitiesScreen> {
   bool _loading = true;
-  bool _responding = false;
   String? _error;
-  String _message = '';
   List<Map<String, dynamic>> _requests = [];
+  final Set<String> _processing = {};
 
-  static const Color _primary = Color(0xFFD92344);
-  static const Color _background = Color(0xFFF7F8FC);
+  static const Color _primary = Color(0xFFDC3545);
+  static const Color _background = Color(0xFFF7F8FA);
 
   @override
   void initState() {
@@ -28,41 +28,41 @@ class _DonorOpportunitiesScreenState
   }
 
   Future<void> _loadOpportunities() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
 
     try {
-      final response =
-          await ApiService.get('/donor-opportunities');
+      final result = await ApiService.get('/donor-opportunities');
 
       if (!mounted) return;
 
-      if (response['success'] != true) {
-        throw Exception(
-          response['message'] ?? 'তথ্য লোড করা যায়নি।',
-        );
+      if (result['success'] == true) {
+        final data = result['requests'];
+
+        setState(() {
+          _requests = data is List
+              ? data
+                  .whereType<Map>()
+                  .map((item) => Map<String, dynamic>.from(item))
+                  .toList()
+              : [];
+          _loading = false;
+        });
+      } else {
+        setState(() {
+          _error = result['message']?.toString() ??
+              'অনুরোধগুলো লোড করা যায়নি।';
+          _loading = false;
+        });
       }
-
-      final dynamic data = response['requests'];
-
-      setState(() {
-        _requests = data is List
-            ? data
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList()
-            : [];
-
-        _message = response['message']?.toString() ?? '';
-        _loading = false;
-      });
     } catch (e) {
       if (!mounted) return;
-
       setState(() {
-        _error = e.toString().replaceFirst('Exception: ', '');
+        _error = 'সার্ভারের সঙ্গে সংযোগ করা যাচ্ছে না।';
         _loading = false;
       });
     }
@@ -70,40 +70,40 @@ class _DonorOpportunitiesScreenState
 
   Future<void> _respond(
     Map<String, dynamic> request,
-    String responseType,
+    String response,
   ) async {
-    if (_responding) return;
+    final id = request['id']?.toString();
 
-    final int? requestId =
-        int.tryParse(request['id']?.toString() ?? '');
+    if (id == null || id.isEmpty || _processing.contains(id)) {
+      return;
+    }
 
-    if (requestId == null) return;
-
-    final bool accepted = responseType == 'accepted';
+    final isAccept = response == 'accepted';
 
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          accepted ? 'রক্তদানে সম্মতি' : 'অনুরোধ প্রত্যাখ্যান',
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
         ),
+        title: Text(isAccept ? 'অনুরোধ গ্রহণ করবেন?' : 'প্রত্যাখ্যান করবেন?'),
         content: Text(
-          accepted
-              ? 'আপনি কি এই রোগীকে রক্ত দিতে সম্মত? সম্মতি দেওয়ার পর প্রয়োজনীয় যোগাযোগের তথ্য পাওয়া যাবে।'
-              : 'আপনি কি এই রক্তদানের অনুরোধটি প্রত্যাখ্যান করতে চান?',
+          isAccept
+              ? 'আপনি এই রক্তের অনুরোধটি গ্রহণ করতে যাচ্ছেন।'
+              : 'আপনি কি নিশ্চিতভাবে এই অনুরোধটি প্রত্যাখ্যান করতে চান?',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
+            onPressed: () => Navigator.pop(context, false),
             child: const Text('না'),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor:
-                  accepted ? _primary : Colors.grey.shade700,
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isAccept ? const Color(0xFF168C78) : _primary,
+              foregroundColor: Colors.white,
             ),
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('নিশ্চিত করুন'),
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(isAccept ? 'হ্যাঁ, গ্রহণ করুন' : 'প্রত্যাখ্যান'),
           ),
         ],
       ),
@@ -111,179 +111,198 @@ class _DonorOpportunitiesScreenState
 
     if (confirmed != true || !mounted) return;
 
-    setState(() => _responding = true);
+    setState(() => _processing.add(id));
 
     try {
       final result = await ApiService.post(
-        '/blood-requests/$requestId/respond',
-        body: {'response': responseType},
+        '/blood-requests/$id/respond',
+        body: {'response': response},
       );
 
       if (!mounted) return;
 
-      if (result['success'] != true) {
-        throw Exception(
-          result['message'] ?? 'আপনার উত্তর জমা দেওয়া যায়নি।',
+      if (result['success'] == true) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              isAccept
+                  ? 'অনুরোধটি গ্রহণ করা হয়েছে।'
+                  : 'অনুরোধটি প্রত্যাখ্যান করা হয়েছে।',
+            ),
+            backgroundColor: const Color(0xFF168C78),
+          ),
+        );
+
+        await _loadOpportunities();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result['message']?.toString() ?? 'কাজটি সম্পন্ন করা যায়নি।',
+            ),
+            backgroundColor: _primary,
+          ),
         );
       }
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            accepted
-                ? 'আপনার রক্তদানের সম্মতি জমা হয়েছে।'
-                : 'অনুরোধটি প্রত্যাখ্যান করা হয়েছে।',
-          ),
-          backgroundColor: accepted
-              ? Colors.green.shade700
-              : Colors.blueGrey,
-        ),
-      );
-
-      await _loadOpportunities();
     } catch (e) {
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            e.toString().replaceFirst('Exception: ', ''),
-          ),
-          backgroundColor: Colors.red.shade700,
+        const SnackBar(
+          content: Text('সার্ভারের সঙ্গে যোগাযোগ করা যায়নি।'),
+          backgroundColor: _primary,
         ),
       );
     } finally {
       if (mounted) {
-        setState(() => _responding = false);
+        setState(() => _processing.remove(id));
       }
     }
   }
 
-  String _formatDate(dynamic value) {
-    if (value == null || value.toString().isEmpty) {
-      return 'সময় নির্ধারিত নয়';
+  String _value(Map<String, dynamic> data, List<String> keys,
+      {String fallback = 'উল্লেখ নেই'}) {
+    for (final key in keys) {
+      final value = data[key];
+      if (value != null && value.toString().trim().isNotEmpty) {
+        return value.toString();
+      }
     }
+    return fallback;
+  }
+
+  String _formatDate(String value) {
+    if (value == 'উল্লেখ নেই') return value;
 
     try {
-      final date = DateTime.parse(value.toString()).toLocal();
+      final date = DateTime.parse(value).toLocal();
       final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+      final minute = date.minute.toString().padLeft(2, '0');
       final period = date.hour >= 12 ? 'PM' : 'AM';
 
-      return '${date.day.toString().padLeft(2, '0')}/'
-          '${date.month.toString().padLeft(2, '0')}/'
-          '${date.year} • $hour:'
-          '${date.minute.toString().padLeft(2, '0')} $period';
+      return '${date.day}/${date.month}/${date.year} • $hour:$minute $period';
     } catch (_) {
-      return value.toString();
+      return value;
     }
   }
 
-  Widget _emptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(30),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              width: 100,
-              height: 100,
-              decoration: BoxDecoration(
-                color: _primary.withValues(alpha: 0.08),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.volunteer_activism_rounded,
-                size: 48,
-                color: _primary,
-              ),
+  Widget _infoRow(IconData icon, String title, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 11),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 19, color: Colors.blueGrey.shade500),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF263238),
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 22),
-            const Text(
-              'এখন কোনো রক্তের অনুরোধ নেই',
-              style: TextStyle(
-                fontSize: 19,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 9),
-            Text(
-              _message.isNotEmpty
-                  ? _message
-                  : 'আপনার রক্তের গ্রুপের সঙ্গে মিলে যাওয়া নতুন অনুরোধ এলে এখানে দেখতে পাবেন।',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.grey.shade600,
-                height: 1.6,
-              ),
-            ),
-            const SizedBox(height: 22),
-            OutlinedButton.icon(
-              onPressed: _loadOpportunities,
-              icon: const Icon(Icons.refresh),
-              label: const Text('আবার দেখুন'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _requestCard(Map<String, dynamic> request) {
-    final String bloodGroup =
-        request['blood_group']?.toString() ?? '--';
+    final id = request['id']?.toString() ?? '';
+    final busy = _processing.contains(id);
 
-    final String hospital =
-        request['hospital_name']?.toString() ?? 'হাসপাতালের নাম নেই';
+    final bloodGroup = _value(
+      request,
+      ['blood_group', 'bloodGroup'],
+      fallback: 'N/A',
+    );
 
-    final String district =
-        request['district']?.toString() ?? '';
+    final units = _value(
+      request,
+      ['units', 'bags', 'blood_units'],
+      fallback: '১',
+    );
 
-    final String area =
-        request['area']?.toString() ?? '';
+    final district = _value(request, ['district']);
+    final area = _value(request, ['area', 'address']);
+    final hospital = _value(
+      request,
+      ['hospital_name', 'hospital'],
+    );
 
-    final String condition =
-        request['patient_condition']?.toString() ?? '';
+    final neededAt = _formatDate(
+      _value(
+        request,
+        ['needed_at', 'required_at', 'date'],
+      ),
+    );
 
-    final String location = [area, district]
-        .where((item) => item.trim().isNotEmpty)
-        .join(', ');
+    final condition = _value(
+      request,
+      ['patient_condition', 'condition'],
+    );
+
+    final urgency = _value(
+      request,
+      ['urgency', 'priority'],
+      fallback: 'সাধারণ',
+    );
+
+    final notes = _value(
+      request,
+      ['notes', 'description'],
+      fallback: '',
+    );
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE9ECEF)),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.035),
-            blurRadius: 15,
-            offset: const Offset(0, 5),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(17),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
               children: [
                 Container(
-                  width: 58,
-                  height: 58,
+                  width: 62,
+                  height: 62,
                   decoration: BoxDecoration(
-                    color: _primary.withValues(alpha: 0.09),
-                    borderRadius: BorderRadius.circular(16),
+                    color: const Color(0xFFFFEEF0),
+                    borderRadius: BorderRadius.circular(15),
                   ),
                   child: Center(
                     child: Text(
                       bloodGroup,
                       style: const TextStyle(
                         color: _primary,
-                        fontSize: 19,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
@@ -294,20 +313,18 @@ class _DonorOpportunitiesScreenState
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'রক্ত প্রয়োজন',
+                        'রক্তের প্রয়োজন',
                         style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        hospital,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        '$units ব্যাগ রক্ত প্রয়োজন',
                         style: TextStyle(
-                          color: Colors.grey.shade600,
                           fontSize: 13,
+                          color: Colors.grey.shade600,
                         ),
                       ),
                     ],
@@ -315,104 +332,194 @@ class _DonorOpportunitiesScreenState
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 11,
-                    vertical: 7,
+                    horizontal: 10,
+                    vertical: 6,
                   ),
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFFF1E8),
-                    borderRadius: BorderRadius.circular(30),
+                    color: const Color(0xFFFFF3E0),
+                    borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
-                    '${request['bags'] ?? 1} ব্যাগ',
+                    urgency,
                     style: const TextStyle(
-                      color: Color(0xFFB65A20),
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
+                      fontSize: 11,
+                      color: Color(0xFFB76E00),
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 17),
-            Divider(color: Colors.grey.shade200),
-            const SizedBox(height: 8),
-            _infoRow(
-              Icons.location_on_outlined,
-              location.isEmpty ? 'ঠিকানা উল্লেখ নেই' : location,
+          ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 15, 16, 5),
+            child: Column(
+              children: [
+                _infoRow(
+                  Icons.local_hospital_outlined,
+                  'হাসপাতাল',
+                  hospital,
+                ),
+                _infoRow(
+                  Icons.location_on_outlined,
+                  'জেলা ও এলাকা',
+                  '$district, $area',
+                ),
+                _infoRow(
+                  Icons.calendar_month_outlined,
+                  'রক্ত প্রয়োজন',
+                  neededAt,
+                ),
+                _infoRow(
+                  Icons.health_and_safety_outlined,
+                  'রোগীর অবস্থা',
+                  condition,
+                ),
+                if (notes.isNotEmpty)
+                  _infoRow(
+                    Icons.notes_outlined,
+                    'অতিরিক্ত তথ্য',
+                    notes,
+                  ),
+              ],
             ),
-            const SizedBox(height: 10),
-            _infoRow(
-              Icons.calendar_month_outlined,
-              _formatDate(request['needed_at']),
+          ),
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 2, 16, 14),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F6F5),
+              borderRadius: BorderRadius.circular(10),
             ),
-            if (condition.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              _infoRow(Icons.info_outline, condition),
-            ],
-            const SizedBox(height: 18),
-            Row(
+            child: const Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  Icons.lock_outline,
+                  size: 17,
+                  color: Color(0xFF168C78),
+                ),
+                SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'অনুরোধ গ্রহণ করার পর প্রয়োজনীয় যোগাযোগের তথ্য পাওয়া যাবে।',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF42645D),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+            child: Row(
               children: [
                 Expanded(
                   child: OutlinedButton(
-                    onPressed: _responding
+                    onPressed: busy
                         ? null
                         : () => _respond(request, 'rejected'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.grey.shade700,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
-                      side: BorderSide(color: Colors.grey.shade300),
+                      foregroundColor: _primary,
+                      side: const BorderSide(color: _primary),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(11),
                       ),
                     ),
-                    child: const Text('এড়িয়ে যান'),
+                    child: const Text('প্রত্যাখ্যান'),
                   ),
                 ),
-                const SizedBox(width: 11),
+                const SizedBox(width: 10),
                 Expanded(
                   flex: 2,
-                  child: FilledButton.icon(
-                    onPressed: _responding
+                  child: ElevatedButton(
+                    onPressed: busy
                         ? null
                         : () => _respond(request, 'accepted'),
-                    icon: const Icon(
-                      Icons.favorite_rounded,
-                      size: 18,
-                    ),
-                    label: const Text('রক্ত দিতে চাই'),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: _primary,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF168C78),
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 13),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(11),
                       ),
                     ),
+                    child: busy
+                        ? const SizedBox(
+                            height: 18,
+                            width: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text(
+                            'রক্ত দিতে আগ্রহী',
+                            style: TextStyle(fontWeight: FontWeight.w700),
+                          ),
                   ),
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _infoRow(IconData icon, String text) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: _primary),
-        const SizedBox(width: 9),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 13,
+  Widget _emptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 30),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              height: 100,
+              width: 100,
+              decoration: const BoxDecoration(
+                color: Color(0xFFFFEEF0),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(
+                Icons.volunteer_activism_outlined,
+                size: 48,
+                color: _primary,
+              ),
             ),
-          ),
+            const SizedBox(height: 22),
+            const Text(
+              'এখন কোনো রক্তের অনুরোধ নেই',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'আপনার রক্তের গ্রুপের নতুন অনুরোধ এলে এখানে দেখতে পাবেন।',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade600,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 20),
+            OutlinedButton.icon(
+              onPressed: _loadOpportunities,
+              icon: const Icon(Icons.refresh),
+              label: const Text('আবার চেষ্টা করুন'),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -422,114 +529,81 @@ class _DonorOpportunitiesScreenState
       backgroundColor: _background,
       appBar: AppBar(
         backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
+        foregroundColor: const Color(0xFF263238),
         elevation: 0,
         title: const Text(
-          'রক্তের অনুরোধ',
+          'রক্তদানের সুযোগ',
           style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 19,
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
           ),
         ),
         actions: [
           IconButton(
-            onPressed: _loading ? null : _loadOpportunities,
-            icon: const Icon(Icons.refresh_rounded),
+            onPressed: _loadOpportunities,
+            icon: const Icon(Icons.refresh),
             tooltip: 'রিফ্রেশ',
           ),
-          const SizedBox(width: 5),
         ],
       ),
-      body: SafeArea(
+      body: RefreshIndicator(
+        color: _primary,
+        onRefresh: _loadOpportunities,
         child: _loading
             ? const Center(
                 child: CircularProgressIndicator(color: _primary),
               )
             : _error != null
-                ? Center(
-                    child: Padding(
-                      padding: const EdgeInsets.all(25),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.cloud_off_rounded,
-                            color: _primary,
-                            size: 48,
+                ? ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      SizedBox(
+                        height: MediaQuery.of(context).size.height * 0.55,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.all(25),
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(
+                                  Icons.cloud_off_outlined,
+                                  size: 48,
+                                  color: _primary,
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
+                                  _error!,
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 15),
+                                ElevatedButton(
+                                  onPressed: _loadOpportunities,
+                                  child: const Text('আবার চেষ্টা করুন'),
+                                ),
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 15),
-                          Text(
-                            _error!,
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 18),
-                          FilledButton.icon(
-                            onPressed: _loadOpportunities,
-                            icon: const Icon(Icons.refresh),
-                            label: const Text('আবার চেষ্টা করুন'),
-                          ),
-                        ],
+                        ),
                       ),
-                    ),
+                    ],
                   )
                 : _requests.isEmpty
-                    ? _emptyState()
-                    : RefreshIndicator(
-                        color: _primary,
-                        onRefresh: _loadOpportunities,
-                        child: ListView(
-                          padding: const EdgeInsets.all(17),
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                gradient: const LinearGradient(
-                                  colors: [
-                                    Color(0xFFD92344),
-                                    Color(0xFFAB1735),
-                                  ],
-                                ),
-                                borderRadius: BorderRadius.circular(17),
-                              ),
-                              child: Row(
-                                children: [
-                                  const Icon(
-                                    Icons.volunteer_activism_rounded,
-                                    color: Colors.white,
-                                    size: 32,
-                                  ),
-                                  const SizedBox(width: 13),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'আপনার রক্তে বাঁচতে পারে জীবন',
-                                          style: TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 15,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${_requests.length}টি মিল পাওয়া অনুরোধ',
-                                          style: const TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 12,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(height: 20),
-                            ..._requests.map(_requestCard),
-                          ],
-                        ),
+                    ? ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        children: [
+                          SizedBox(
+                            height: MediaQuery.of(context).size.height * 0.65,
+                            child: _emptyState(),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.all(16),
+                        itemCount: _requests.length,
+                        itemBuilder: (context, index) {
+                          return _requestCard(_requests[index]);
+                        },
                       ),
       ),
     );
