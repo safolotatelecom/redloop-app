@@ -1269,11 +1269,7 @@ class RequestCard extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class NotificationsPage extends StatefulWidget {
+    );class NotificationsPage extends StatefulWidget {
   const NotificationsPage({super.key});
 
   @override
@@ -1286,6 +1282,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   int unreadCount = 0;
   List<dynamic> notifications = [];
   final Set<String> updatingIds = {};
+  final Set<String> openingIds = {};
 
   @override
   void initState() {
@@ -1337,6 +1334,78 @@ class _NotificationsPageState extends State<NotificationsPage> {
     return '${local.day.toString().padLeft(2, '0')}/'
         '${local.month.toString().padLeft(2, '0')}/'
         '${local.year}  $hour:$minute $period';
+  }
+
+  String? _getActionRequestId(Map<String, dynamic> item) {
+    if (item['type']?.toString() != 'blood_request') {
+      return null;
+    }
+
+    final rawData = item['data'];
+    if (rawData is! Map) return null;
+
+    final data = Map<String, dynamic>.from(rawData);
+    final value = data['blood_request_id'] ??
+        data['bloodRequestId'];
+
+    final requestId = value?.toString().trim();
+
+    if (requestId == null || requestId.isEmpty) {
+      return null;
+    }
+
+    return requestId;
+  }
+
+  Future<void> openNotification(Map<String, dynamic> item) async {
+    final requestId = _getActionRequestId(item);
+
+    // যেসব নোটিফিকেশনে কোনো Action নেই, সেগুলোতে কিছুই খুলবে না।
+    if (requestId == null) return;
+
+    final notificationId = item['id']?.toString() ?? '';
+
+    if (notificationId.isNotEmpty &&
+        item['read_at'] == null &&
+        !openingIds.contains(notificationId)) {
+      setState(() => openingIds.add(notificationId));
+
+      final result = await ApiService.patch(
+        '/notifications/$notificationId/read',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        openingIds.remove(notificationId);
+      });
+
+      if (result['success'] == true) {
+        item['read_at'] = DateTime.now().toIso8601String();
+
+        if (unreadCount > 0) {
+          unreadCount--;
+        }
+
+        setState(() {});
+      } else {
+        showMessage(
+          context,
+          'নোটিফিকেশন Read করা যায়নি। অনুরোধটি খোলা হচ্ছে।',
+        );
+      }
+    }
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DonorOpportunitiesScreen(
+          requestId: requestId,
+        ),
+      ),
+    );
   }
 
   Future<void> markRead(String id) async {
@@ -1489,9 +1558,11 @@ class _NotificationsPageState extends State<NotificationsPage> {
     final id = item['id']?.toString() ?? '';
     final isRead = item['read_at'] != null;
     final isUpdating = updatingIds.contains(id);
+    final isOpening = openingIds.contains(id);
     final title = item['title']?.toString() ?? 'নোটিফিকেশন';
     final body = item['body']?.toString() ?? '';
     final date = formatDateTime(item['created_at']);
+    final hasAction = _getActionRequestId(item) != null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -1509,144 +1580,175 @@ class _NotificationsPageState extends State<NotificationsPage> {
           ),
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(15),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 46,
-              height: 46,
-              decoration: BoxDecoration(
-                color: isRead
-                    ? const Color(0xFFF0F1F4)
-                    : red.withOpacity(0.11),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Icon(
-                Icons.bloodtype_rounded,
-                color: isRead ? muted : red,
-                size: 27,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: hasAction && !isOpening
+              ? () => openNotification(item)
+              : null,
+          child: Padding(
+            padding: const EdgeInsets.all(15),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: isRead
+                        ? const Color(0xFFF0F1F4)
+                        : red.withOpacity(0.11),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: Icon(
+                    Icons.bloodtype_rounded,
+                    color: isRead ? muted : red,
+                    size: 27,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          title,
-                          style: TextStyle(
-                            color: dark,
-                            fontSize: 14,
-                            fontWeight:
-                                isRead ? FontWeight.w600 : FontWeight.w900,
-                            height: 1.35,
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Text(
+                              title,
+                              style: TextStyle(
+                                color: dark,
+                                fontSize: 14,
+                                fontWeight:
+                                    isRead ? FontWeight.w600 : FontWeight.w900,
+                                height: 1.35,
+                              ),
+                            ),
                           ),
-                        ),
+                          if (!isRead)
+                            Container(
+                              margin: const EdgeInsets.only(left: 7, top: 5),
+                              width: 8,
+                              height: 8,
+                              decoration: const BoxDecoration(
+                                color: red,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                        ],
                       ),
-                      if (!isRead)
-                        Container(
-                          margin: const EdgeInsets.only(left: 7, top: 5),
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                            color: red,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                    ],
-                  ),
-                  if (body.isNotEmpty) ...[
-                    const SizedBox(height: 7),
-                    Text(
-                      body,
-                      style: const TextStyle(
-                        color: muted,
-                        fontSize: 13,
-                        height: 1.5,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.access_time_rounded,
-                        size: 13,
-                        color: muted,
-                      ),
-                      const SizedBox(width: 5),
-                      Expanded(
-                        child: Text(
-                          date.isEmpty ? 'সময় উল্লেখ নেই' : date,
+                      if (body.isNotEmpty) ...[
+                        const SizedBox(height: 7),
+                        Text(
+                          body,
                           style: const TextStyle(
                             color: muted,
-                            fontSize: 11,
+                            fontSize: 13,
+                            height: 1.5,
                           ),
                         ),
-                      ),
-                      if (isRead)
+                      ],
+                      if (hasAction) ...[
+                        const SizedBox(height: 7),
                         const Row(
-                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Icon(
-                              Icons.done_all_rounded,
-                              size: 15,
-                              color: Color(0xFF168C78),
+                              Icons.touch_app_outlined,
+                              color: red,
+                              size: 14,
                             ),
                             SizedBox(width: 4),
                             Text(
-                              'পড়া হয়েছে',
+                              'অনুরোধ দেখতে ট্যাপ করুন',
                               style: TextStyle(
-                                color: Color(0xFF168C78),
+                                color: red,
                                 fontSize: 11,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
                           ],
-                        )
-                      else
-                        TextButton(
-                          onPressed: id.isEmpty || isUpdating
-                              ? null
-                              : () => markRead(id),
-                          style: TextButton.styleFrom(
-                            foregroundColor: red,
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            minimumSize: Size.zero,
-                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ],
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.access_time_rounded,
+                            size: 13,
+                            color: muted,
                           ),
-                          child: isUpdating
-                              ? const SizedBox(
-                                  width: 15,
-                                  height: 15,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: red,
-                                  ),
-                                )
-                              : const Text(
-                                  'পড়ে ফেলুন',
+                          const SizedBox(width: 5),
+                          Expanded(
+                            child: Text(
+                              date.isEmpty ? 'সময় উল্লেখ নেই' : date,
+                              style: const TextStyle(
+                                color: muted,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ),
+                          if (isRead)
+                            const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.done_all_rounded,
+                                  size: 15,
+                                  color: Color(0xFF168C78),
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'পড়া হয়েছে',
                                   style: TextStyle(
+                                    color: Color(0xFF168C78),
                                     fontSize: 11,
-                                    fontWeight: FontWeight.bold,
+                                    fontWeight: FontWeight.w600,
                                   ),
                                 ),
-                        ),
+                              ],
+                            )
+                          else
+                            TextButton(
+                              onPressed: id.isEmpty || isUpdating || isOpening
+                                  ? null
+                                  : () => markRead(id),
+                              style: TextButton.styleFrom(
+                                foregroundColor: red,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                                minimumSize: Size.zero,
+                                tapTargetSize:
+                                    MaterialTapTargetSize.shrinkWrap,
+                              ),
+                              child: isUpdating || isOpening
+                                  ? const SizedBox(
+                                      width: 15,
+                                      height: 15,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: red,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'পড়ে ফেলুন',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                            ),
+                        ],
+                      ),
                     ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -2135,5 +2237,9 @@ class EmptyState extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+    
   }
 }
