@@ -15,10 +15,6 @@ jobs:
     name: Build Android APK
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: redloop-app
-
     steps:
       - name: Checkout Code
         uses: actions/checkout@v5
@@ -53,5 +49,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: redloop-pro-apk
-          path: redloop-app/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
