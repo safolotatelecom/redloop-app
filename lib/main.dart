@@ -4,6 +4,7 @@ import 'package:local_auth/local_auth.dart';
 
 import 'api_helper.dart';
 import 'donor_profile_screen.dart';
+import 'donor_opportunities_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -806,6 +807,18 @@ class DashboardPage extends StatelessWidget {
                   context,
                   MaterialPageRoute(
                     builder: (_) => const CreateRequestPage(),
+                  ),
+                ),
+              ),
+              ActionTile(
+                icon: Icons.volunteer_activism_rounded,
+                title: 'রক্ত দিতে চাই',
+                subtitle: 'আপনার গ্রুপের অনুরোধ দেখুন',
+                color: const Color(0xFFD92344),
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => const DonorOpportunitiesScreen(),
                   ),
                 ),
               ),
