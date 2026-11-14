@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:local_auth/local_auth.dart';
 
@@ -1283,7 +1282,10 @@ class NotificationsPage extends StatefulWidget {
 
 class _NotificationsPageState extends State<NotificationsPage> {
   bool loading = true;
+  bool markingAll = false;
+  int unreadCount = 0;
   List<dynamic> notifications = [];
+  final Set<String> updatingIds = {};
 
   @override
   void initState() {
@@ -1292,12 +1294,14 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> load() async {
-    setState(() => loading = true);
+    if (mounted) setState(() => loading = true);
+
     final result = await ApiService.get('/notifications');
     if (!mounted) return;
 
-    final raw = result['notifications'] ?? result['data'];
     if (result['success'] == true) {
+      final raw = result['notifications'] ?? result['data'];
+
       if (raw is List) {
         notifications = raw;
       } else if (raw is Map && raw['data'] is List) {
@@ -1305,95 +1309,420 @@ class _NotificationsPageState extends State<NotificationsPage> {
       } else {
         notifications = [];
       }
+
+      unreadCount = int.tryParse(
+            result['unread_count']?.toString() ?? '',
+          ) ??
+          notifications.where((item) {
+            return item is Map && item['read_at'] == null;
+          }).length;
+    } else if (notifications.isEmpty) {
+      showMessage(context, errorMessage(result));
     }
+
     setState(() => loading = false);
   }
 
+  String formatDateTime(dynamic value) {
+    if (value == null) return '';
+
+    final date = DateTime.tryParse(value.toString());
+    if (date == null) return '';
+
+    final local = date.toLocal();
+    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
+    final minute = local.minute.toString().padLeft(2, '0');
+    final period = local.hour >= 12 ? 'PM' : 'AM';
+
+    return '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}/'
+        '${local.year}  $hour:$minute $period';
+  }
+
   Future<void> markRead(String id) async {
+    if (id.isEmpty || updatingIds.contains(id)) return;
+
+    setState(() => updatingIds.add(id));
+
     final result = await ApiService.patch('/notifications/$id/read');
+
+    if (!mounted) return;
+    setState(() => updatingIds.remove(id));
+
     if (result['success'] == true) {
-      load();
-    } else if (mounted) {
+      await load();
+    } else {
       showMessage(context, errorMessage(result));
     }
   }
 
   Future<void> markAllRead() async {
+    if (unreadCount == 0 || markingAll) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Text('সব নোটিফিকেশন পড়া হয়েছে?'),
+        content: const Text(
+          'সব অপঠিত নোটিফিকেশন পড়া হিসেবে চিহ্নিত করতে চান?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('না'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('হ্যাঁ, সব পড়ুন'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => markingAll = true);
+
     final result = await ApiService.patch('/notifications/read-all');
+
+    if (!mounted) return;
+    setState(() => markingAll = false);
+
     if (result['success'] == true) {
-      load();
-    } else if (mounted) {
+      await load();
+      if (mounted) {
+        showMessage(context, 'সব নোটিফিকেশন পড়া হয়েছে।');
+      }
+    } else {
       showMessage(context, errorMessage(result));
     }
+  }
+
+  Widget _buildHeader() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 18),
+      padding: const EdgeInsets.all(19),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE52F43), Color(0xFFB9182B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+        boxShadow: [
+          BoxShadow(
+            color: red.withOpacity(0.16),
+            blurRadius: 16,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.18),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: const Icon(
+              Icons.notifications_active_rounded,
+              color: Colors.white,
+              size: 29,
+            ),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'আপডেট ও নোটিফিকেশন',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  unreadCount == 0
+                      ? 'আপনি সব নোটিফিকেশন পড়ে ফেলেছেন'
+                      : '$unreadCountটি অপঠিত নোটিফিকেশন',
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (unreadCount > 0)
+            Container(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 12,
+                vertical: 8,
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(30),
+              ),
+              child: Text(
+                unreadCount > 99 ? '99+' : '$unreadCount',
+                style: const TextStyle(
+                  color: red,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 14,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNotificationCard(Map<String, dynamic> item) {
+    final id = item['id']?.toString() ?? '';
+    final isRead = item['read_at'] != null;
+    final isUpdating = updatingIds.contains(id);
+    final title = item['title']?.toString() ?? 'নোটিফিকেশন';
+    final body = item['body']?.toString() ?? '';
+    final date = formatDateTime(item['created_at']);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isRead ? Colors.white : const Color(0xFFFFF5F6),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isRead ? const Color(0xFFEDEDF1) : const Color(0xFFF4C9CF),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: dark.withOpacity(0.025),
+            blurRadius: 10,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(15),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 46,
+              height: 46,
+              decoration: BoxDecoration(
+                color: isRead
+                    ? const Color(0xFFF0F1F4)
+                    : red.withOpacity(0.11),
+                borderRadius: BorderRadius.circular(15),
+              ),
+              child: Icon(
+                Icons.bloodtype_rounded,
+                color: isRead ? muted : red,
+                size: 27,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            color: dark,
+                            fontSize: 14,
+                            fontWeight:
+                                isRead ? FontWeight.w600 : FontWeight.w900,
+                            height: 1.35,
+                          ),
+                        ),
+                      ),
+                      if (!isRead)
+                        Container(
+                          margin: const EdgeInsets.only(left: 7, top: 5),
+                          width: 8,
+                          height: 8,
+                          decoration: const BoxDecoration(
+                            color: red,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                    ],
+                  ),
+                  if (body.isNotEmpty) ...[
+                    const SizedBox(height: 7),
+                    Text(
+                      body,
+                      style: const TextStyle(
+                        color: muted,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.access_time_rounded,
+                        size: 13,
+                        color: muted,
+                      ),
+                      const SizedBox(width: 5),
+                      Expanded(
+                        child: Text(
+                          date.isEmpty ? 'সময় উল্লেখ নেই' : date,
+                          style: const TextStyle(
+                            color: muted,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ),
+                      if (isRead)
+                        const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.done_all_rounded,
+                              size: 15,
+                              color: Color(0xFF168C78),
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'পড়া হয়েছে',
+                              style: TextStyle(
+                                color: Color(0xFF168C78),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        )
+                      else
+                        TextButton(
+                          onPressed: id.isEmpty || isUpdating
+                              ? null
+                              : () => markRead(id),
+                          style: TextButton.styleFrom(
+                            foregroundColor: red,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
+                            minimumSize: Size.zero,
+                            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          ),
+                          child: isUpdating
+                              ? const SizedBox(
+                                  width: 15,
+                                  height: 15,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: red,
+                                  ),
+                                )
+                              : const Text(
+                                  'পড়ে ফেলুন',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('নোটিফিকেশন'),
+        title: const Text(
+          'নোটিফিকেশন',
+          style: TextStyle(fontWeight: FontWeight.w800),
+        ),
         actions: [
+          if (unreadCount > 0)
+            TextButton.icon(
+              onPressed: markingAll ? null : markAllRead,
+              icon: markingAll
+                  ? const SizedBox(
+                      width: 15,
+                      height: 15,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: red,
+                      ),
+                    )
+                  : const Icon(Icons.done_all_rounded, size: 18),
+              label: const Text('সব পড়ুন'),
+            ),
           IconButton(
-            tooltip: 'সব পড়া হয়েছে',
-            onPressed: markAllRead,
-            icon: const Icon(Icons.done_all),
+            tooltip: 'রিফ্রেশ',
+            onPressed: loading ? null : load,
+            icon: const Icon(Icons.refresh_rounded),
           ),
-          IconButton(onPressed: load, icon: const Icon(Icons.refresh)),
         ],
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator(color: red))
-          : notifications.isEmpty
-              ? const EmptyState(
-                  icon: Icons.notifications_none,
-                  title: 'কোনো নোটিফিকেশন নেই',
-                  subtitle: 'নতুন আপডেট এখানে দেখা যাবে।',
-                )
-              : RefreshIndicator(
-                  color: red,
-                  onRefresh: load,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: notifications.length,
-                    itemBuilder: (context, index) {
-                      final item = Map<String, dynamic>.from(
-                        notifications[index] as Map,
-                      );
-                      final id = item['id']?.toString() ?? '';
-                      final isRead = item['read_at'] != null;
-
-                      return Card(
-                        color: Colors.white,
-                        elevation: 0,
-                        margin: const EdgeInsets.only(bottom: 10),
-                        child: ListTile(
-                          leading: CircleAvatar(
-                            backgroundColor: red.withOpacity(0.1),
-                            child: const Icon(Icons.bloodtype, color: red),
-                          ),
-                          title: Text(
-                            item['title']?.toString() ?? 'নোটিফিকেশন',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          subtitle: Text(item['body']?.toString() ?? ''),
-                          trailing: isRead
-                              ? const Icon(Icons.done, color: muted)
-                              : IconButton(
-                                  onPressed: id.isEmpty
-                                      ? null
-                                      : () => markRead(id),
-                                  icon: const Icon(
-                                    Icons.mark_email_read_outlined,
-                                    color: red,
-                                  ),
-                                ),
+          ? const Center(
+              child: CircularProgressIndicator(color: red),
+            )
+          : RefreshIndicator(
+              color: red,
+              onRefresh: load,
+              child: notifications.isEmpty
+                  ? ListView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      children: const [
+                        SizedBox(height: 35),
+                        EmptyState(
+                          icon: Icons.notifications_none_rounded,
+                          title: 'কোনো নোটিফিকেশন নেই',
+                          subtitle: 'নতুন আপডেট এলে এখানে দেখা যাবে।',
                         ),
-                      );
-                    },
-                  ),
-                ),
+                      ],
+                    )
+                  : ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.only(bottom: 24),
+                      itemCount: notifications.length + 1,
+                      itemBuilder: (context, index) {
+                        if (index == 0) return _buildHeader();
+
+                        final value = notifications[index - 1];
+                        if (value is! Map) {
+                          return const SizedBox.shrink();
+                        }
+
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: _buildNotificationCard(
+                            Map<String, dynamic>.from(value),
+                          ),
+                        );
+                      },
+                    ),
+            ),
     );
   }
 }
