@@ -67,7 +67,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
 
         for (final nestedKey in ['profile', 'donor_profile']) {
           final nested = value[nestedKey];
-
           if (nested is Map<String, dynamic>) {
             return nested;
           }
@@ -90,7 +89,6 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
 
       if (profile != null) {
         final group = profile['blood_group']?.toString();
-
         if (group != null &&
             ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-']
                 .contains(group)) {
@@ -393,7 +391,7 @@ class _DonorProfileScreenState extends State<DonorProfileScreen> {
                       borderRadius: BorderRadius.circular(16),
                     ),
                     tileColor: Colors.white,
-                    activeThumbColor: _red,
+                    activeColor: _red,
                     value: _available,
                     onChanged: (value) {
                       setState(() => _available = value);
