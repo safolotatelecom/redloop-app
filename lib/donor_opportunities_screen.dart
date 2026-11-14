@@ -239,16 +239,10 @@ class _DonorOpportunitiesScreenState
 
     final district = _value(request, ['district']);
     final area = _value(request, ['area', 'address']);
-    final hospital = _value(
-      request,
-      ['hospital_name', 'hospital'],
-    );
+    final hospital = _value(request, ['hospital_name', 'hospital']);
 
     final neededAt = _formatDate(
-      _value(
-        request,
-        ['needed_at', 'required_at', 'date'],
-      ),
+      _value(request, ['needed_at', 'required_at', 'date']),
     );
 
     final condition = _value(
@@ -276,7 +270,7 @@ class _DonorOpportunitiesScreenState
         border: Border.all(color: const Color(0xFFE9ECEF)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.035),
+            color: Colors.black.withOpacity(0.035),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -356,32 +350,20 @@ class _DonorOpportunitiesScreenState
             padding: const EdgeInsets.fromLTRB(16, 15, 16, 5),
             child: Column(
               children: [
-                _infoRow(
-                  Icons.local_hospital_outlined,
-                  'হাসপাতাল',
-                  hospital,
-                ),
+                _infoRow(Icons.local_hospital_outlined, 'হাসপাতাল', hospital),
                 _infoRow(
                   Icons.location_on_outlined,
                   'জেলা ও এলাকা',
                   '$district, $area',
                 ),
-                _infoRow(
-                  Icons.calendar_month_outlined,
-                  'রক্ত প্রয়োজন',
-                  neededAt,
-                ),
+                _infoRow(Icons.calendar_month_outlined, 'রক্ত প্রয়োজন', neededAt),
                 _infoRow(
                   Icons.health_and_safety_outlined,
                   'রোগীর অবস্থা',
                   condition,
                 ),
                 if (notes.isNotEmpty)
-                  _infoRow(
-                    Icons.notes_outlined,
-                    'অতিরিক্ত তথ্য',
-                    notes,
-                  ),
+                  _infoRow(Icons.notes_outlined, 'অতিরিক্ত তথ্য', notes),
               ],
             ),
           ),
