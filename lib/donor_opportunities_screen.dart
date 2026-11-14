@@ -1,9 +1,15 @@
+
 import 'package:flutter/material.dart';
 
 import 'api_helper.dart';
 
 class DonorOpportunitiesScreen extends StatefulWidget {
-  const DonorOpportunitiesScreen({super.key});
+  final String? requestId;
+
+  const DonorOpportunitiesScreen({
+    super.key,
+    this.requestId,
+  });
 
   @override
   State<DonorOpportunitiesScreen> createState() =>
@@ -15,7 +21,11 @@ class _DonorOpportunitiesScreenState
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _requests = [];
+  List<Map<String, dynamic>> _allRequests = [];
   final Set<String> _processing = {};
+
+  bool _targetNotFound = false;
+  bool _showAllOpportunities = false;
 
   static const Color _primary = Color(0xFFDC3545);
   static const Color _background = Color(0xFFF7F8FA);
@@ -31,6 +41,7 @@ class _DonorOpportunitiesScreenState
       setState(() {
         _loading = true;
         _error = null;
+        _targetNotFound = false;
       });
     }
 
@@ -42,13 +53,30 @@ class _DonorOpportunitiesScreenState
       if (result['success'] == true) {
         final data = result['requests'];
 
+        final allRequests = data is List
+            ? data
+                .whereType<Map>()
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList()
+            : <Map<String, dynamic>>[];
+
+        final targetId = widget.requestId?.trim();
+
+        final filteredRequests = targetId == null || targetId.isEmpty
+            ? allRequests
+            : allRequests
+                .where((item) => item['id']?.toString() == targetId)
+                .toList();
+
         setState(() {
-          _requests = data is List
-              ? data
-                  .whereType<Map>()
-                  .map((item) => Map<String, dynamic>.from(item))
-                  .toList()
-              : [];
+          _allRequests = allRequests;
+          _requests = _showAllOpportunities
+              ? allRequests
+              : filteredRequests;
+          _targetNotFound = targetId != null &&
+              targetId.isNotEmpty &&
+              filteredRequests.isEmpty &&
+              !_showAllOpportunities;
           _loading = false;
         });
       } else {
@@ -67,33 +95,22 @@ class _DonorOpportunitiesScreenState
     }
   }
 
+  void _showAllRequests() {
+    setState(() {
+      _showAllOpportunities = true;
+      _targetNotFound = false;
+      _requests = _allRequests;
+    });
+  }
+
   Future<void> _showAcceptedDetails(
     Map<String, dynamic> details,
   ) async {
-    final name = _value(
-      details,
-      ['requester_name'],
-    );
-
-    final phone = _value(
-      details,
-      ['requester_phone', 'phone'],
-    );
-
-    final hospital = _value(
-      details,
-      ['hospital_name'],
-    );
-
-    final district = _value(
-      details,
-      ['district'],
-    );
-
-    final area = _value(
-      details,
-      ['area'],
-    );
+    final name = _value(details, ['requester_name']);
+    final phone = _value(details, ['requester_phone', 'phone']);
+    final hospital = _value(details, ['hospital_name']);
+    final district = _value(details, ['district']);
+    final area = _value(details, ['area']);
 
     final neededAt = _formatDate(
       _value(details, ['needed_at']),
@@ -140,31 +157,15 @@ class _DonorOpportunitiesScreenState
                 ),
               ),
               const SizedBox(height: 18),
-              _infoRow(
-                Icons.person_outline,
-                'অনুরোধকারীর নাম',
-                name,
-              ),
-              _infoRow(
-                Icons.phone_outlined,
-                'মোবাইল নম্বর',
-                phone,
-              ),
+              _infoRow(Icons.person_outline, 'অনুরোধকারীর নাম', name),
+              _infoRow(Icons.phone_outlined, 'মোবাইল নম্বর', phone),
               _infoRow(
                 Icons.local_hospital_outlined,
                 'হাসপাতাল',
                 hospital,
               ),
-              _infoRow(
-                Icons.location_on_outlined,
-                'জেলা',
-                district,
-              ),
-              _infoRow(
-                Icons.place_outlined,
-                'এলাকা',
-                area,
-              ),
+              _infoRow(Icons.location_on_outlined, 'জেলা', district),
+              _infoRow(Icons.place_outlined, 'এলাকা', area),
               _infoRow(
                 Icons.calendar_month_outlined,
                 'রক্ত প্রয়োজন',
@@ -674,6 +675,53 @@ class _DonorOpportunitiesScreenState
     );
   }
 
+  Widget _targetNotFoundState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.find_in_page_outlined,
+              size: 62,
+              color: _primary,
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'এই রক্তের অনুরোধটি আর উপলভ্য নেই',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 9),
+            Text(
+              'অনুরোধটি ইতিমধ্যে পূরণ, বন্ধ অথবা আপনার জন্য আর প্রযোজ্য নয়।',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey.shade600,
+                height: 1.5,
+              ),
+            ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: _showAllRequests,
+              icon: const Icon(Icons.volunteer_activism_outlined),
+              label: const Text('অন্য রক্তদানের সুযোগ দেখুন'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -682,9 +730,11 @@ class _DonorOpportunitiesScreenState
         backgroundColor: Colors.white,
         foregroundColor: const Color(0xFF263238),
         elevation: 0,
-        title: const Text(
-          'রক্তদানের সুযোগ',
-          style: TextStyle(
+        title: Text(
+          widget.requestId != null && !_showAllOpportunities
+              ? 'নির্দিষ্ট রক্তের অনুরোধ'
+              : 'রক্তদানের সুযোগ',
+          style: const TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
           ),
@@ -701,8 +751,16 @@ class _DonorOpportunitiesScreenState
         color: _primary,
         onRefresh: _loadOpportunities,
         child: _loading
-            ? const Center(
-                child: CircularProgressIndicator(color: _primary),
+            ? const ListView(
+                physics: AlwaysScrollableScrollPhysics(),
+                children: [
+                  SizedBox(
+                    height: 500,
+                    child: Center(
+                      child: CircularProgressIndicator(color: _primary),
+                    ),
+                  ),
+                ],
               )
             : _error != null
                 ? ListView(
@@ -738,24 +796,34 @@ class _DonorOpportunitiesScreenState
                       ),
                     ],
                   )
-                : _requests.isEmpty
+                : _targetNotFound
                     ? ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: [
                           SizedBox(
                             height: MediaQuery.of(context).size.height * 0.65,
-                            child: _emptyState(),
+                            child: _targetNotFoundState(),
                           ),
                         ],
                       )
-                    : ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _requests.length,
-                        itemBuilder: (context, index) {
-                          return _requestCard(_requests[index]);
-                        },
-                      ),
+                    : _requests.isEmpty
+                        ? ListView(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            children: [
+                              SizedBox(
+                                height: MediaQuery.of(context).size.height * 0.65,
+                                child: _emptyState(),
+                              ),
+                            ],
+                          )
+                        : ListView.builder(
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _requests.length,
+                            itemBuilder: (context, index) {
+                              return _requestCard(_requests[index]);
+                            },
+                          ),
       ),
     );
   }
