@@ -2023,6 +2023,3 @@ class EmptyState extends StatelessWidget {
   }
 }
 
-    
-  }
-}
