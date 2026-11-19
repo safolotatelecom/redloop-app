@@ -13,7 +13,7 @@ class ChatScreen extends StatefulWidget {
     super.key,
     required this.requestId,
     required this.donorId,
-    this.otherName = 'Conversation',
+    required this.otherName,
   });
 
   @override
@@ -21,24 +21,41 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final TextEditingController _messageController = TextEditingController();
+  static const Color primary = Color(0xFFDC2638);
+
+  final TextEditingController _messageController =
+      TextEditingController();
+
   final ScrollController _scrollController = ScrollController();
 
   List<Map<String, dynamic>> _messages = [];
 
+  Timer? _refreshTimer;
+
+  String? _currentUserId;
+  String? _expiresAt;
+
   bool _loading = true;
   bool _sending = false;
+  bool _chatExpired = false;
   String? _error;
 
-  Timer? _refreshTimer;
+  String get _endpoint =>
+      '/blood-requests/${Uri.encodeComponent(widget.requestId)}/messages';
 
   @override
   void initState() {
     super.initState();
+    _loadCurrentUser();
     _loadMessages();
+
     _refreshTimer = Timer.periodic(
       const Duration(seconds: 5),
-      (_) => _loadMessages(silent: true),
+      (_) {
+        if (!_sending && !_loading) {
+          _loadMessages(showLoader: false);
+        }
+      },
     );
   }
 
@@ -50,24 +67,45 @@ class _ChatScreenState extends State<ChatScreen> {
     super.dispose();
   }
 
-  String get _endpoint =>
-      '/blood-requests/${widget.requestId}/messages';
+  Future<void> _loadCurrentUser() async {
+    final result = await ApiService.getCurrentUser();
 
-  void _showMessage(String message) {
-    if (!mounted) return;
+    if (!mounted || result['success'] != true) return;
 
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    final user = result['user'];
+
+    if (user is Map) {
+      setState(() {
+        _currentUserId = user['id']?.toString();
+      });
+    }
   }
 
-  Future<void> _loadMessages({bool silent = false}) async {
-    if (!silent && mounted) {
+  List<Map<String, dynamic>> _extractMessages(
+    Map<String, dynamic> result,
+  ) {
+    dynamic value = result['messages'] ?? result['data'];
+
+    if (value is Map) {
+      value = value['messages'] ?? value['data'];
+    }
+
+    if (value is! List) return [];
+
+    return value
+        .whereType<Map>()
+        .map(
+          (item) => Map<String, dynamic>.from(item),
+        )
+        .toList();
+  }
+
+  Future<void> _loadMessages({
+    bool showLoader = true,
+  }) async {
+    if (!mounted) return;
+
+    if (showLoader) {
       setState(() {
         _loading = true;
         _error = null;
@@ -77,34 +115,31 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final result = await ApiService.get(
         _endpoint,
-        query: {'donor_id': widget.donorId},
+        query: {
+          'donor_id': widget.donorId,
+        },
       );
 
       if (!mounted) return;
 
       if (result['success'] == true) {
-        final raw = result['messages'] ?? result['data'];
+        final messages = _extractMessages(result);
 
-        final loaded = raw is List
-            ? raw
-                .whereType<Map>()
-                .map((item) => Map<String, dynamic>.from(item))
-                .toList()
-            : <Map<String, dynamic>>[];
+        final expiry = result['chat_expires_at'] ??
+            result['expires_at'];
 
-        final changed = loaded.length != _messages.length ||
-            (loaded.isNotEmpty &&
-                _messages.isNotEmpty &&
-                loaded.last['id']?.toString() !=
-                    _messages.last['id']?.toString());
+        final expired = result['chat_expired'] == true ||
+            result['expired'] == true;
 
         setState(() {
-          _messages = loaded;
+          _messages = messages;
+          _expiresAt = expiry?.toString();
+          _chatExpired = expired || _isExpired(_expiresAt);
           _loading = false;
           _error = null;
         });
 
-        if (changed) _scrollToBottom();
+        _scrollToBottom();
       } else {
         setState(() {
           _loading = false;
@@ -122,10 +157,68 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  bool _isExpired(String? value) {
+    if (value == null || value.isEmpty) return false;
+
+    try {
+      final expiry = DateTime.parse(value).toLocal();
+      return DateTime.now().isAfter(expiry);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool _isMine(Map<String, dynamic> message) {
+    final senderId = message['sender_id']?.toString();
+
+    if (_currentUserId == null || senderId == null) {
+      return false;
+    }
+
+    return senderId == _currentUserId;
+  }
+
+  String _messageText(Map<String, dynamic> message) {
+    return message['message']?.toString() ??
+        message['body']?.toString() ??
+        '';
+  }
+
+  String _messageTime(Map<String, dynamic> message) {
+    final value = message['created_at']?.toString();
+
+    if (value == null || value.isEmpty) return '';
+
+    try {
+      final date = DateTime.parse(value).toLocal();
+      final hour = date.hour % 12 == 0 ? 12 : date.hour % 12;
+      final minute = date.minute.toString().padLeft(2, '0');
+      final period = date.hour >= 12 ? 'PM' : 'AM';
+
+      return '$hour:$minute $period';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
   Future<void> _sendMessage() async {
     final message = _messageController.text.trim();
 
-    if (message.isEmpty || _sending) return;
+    if (message.isEmpty || _sending || _chatExpired) return;
+
+    FocusScope.of(context).unfocus();
 
     setState(() => _sending = true);
 
@@ -142,18 +235,32 @@ class _ChatScreenState extends State<ChatScreen> {
 
       if (result['success'] == true) {
         _messageController.clear();
-        await _loadMessages(silent: true);
-        _scrollToBottom();
+
+        await _loadMessages(showLoader: false);
       } else {
-        _showMessage(
-          result['message']?.toString() ??
-              'মেসেজ পাঠানো যায়নি।',
+        final statusCode = result['status_code'];
+
+        if (statusCode == 403 || statusCode == 410) {
+          setState(() => _chatExpired = true);
+        }
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              result['message']?.toString() ??
+                  'মেসেজ পাঠানো যায়নি।',
+            ),
+          ),
         );
       }
     } catch (_) {
-      if (mounted) {
-        _showMessage('সার্ভারের সঙ্গে যোগাযোগ করা যায়নি।');
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('মেসেজ পাঠানো যায়নি। আবার চেষ্টা করুন।'),
+        ),
+      );
     } finally {
       if (mounted) {
         setState(() => _sending = false);
@@ -161,50 +268,15 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) return;
-
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      );
-    });
-  }
-
-  String _formatTime(dynamic value) {
-    if (value == null) return '';
-
-    final date = DateTime.tryParse(value.toString());
-    if (date == null) return '';
-
-    final local = date.toLocal();
-    final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
-    final minute = local.minute.toString().padLeft(2, '0');
-    final period = local.hour >= 12 ? 'PM' : 'AM';
-
-    return '$hour:$minute $period';
-  }
-
-  bool _isMine(Map<String, dynamic> message) {
-    final sender = message['sender_id']?.toString();
-    final currentUserId = message['is_mine'];
-
-    if (currentUserId == true || currentUserId == 1) {
-      return true;
-    }
-
-    return sender != null && sender == 'current_user';
-  }
-
-  Widget _messageBubble(Map<String, dynamic> message) {
+  Widget _buildMessage(
+    Map<String, dynamic> message,
+  ) {
     final mine = _isMine(message);
-    final text = message['message']?.toString() ?? '';
-    final time = _formatTime(message['created_at']);
+    final content = _messageText(message);
 
     return Align(
-      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      alignment:
+          mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.78,
@@ -215,7 +287,7 @@ class _ChatScreenState extends State<ChatScreen> {
           vertical: 10,
         ),
         decoration: BoxDecoration(
-          color: mine ? const Color(0xFFDC2638) : Colors.white,
+          color: mine ? primary : Colors.white,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
@@ -224,59 +296,107 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           border: mine
               ? null
-              : Border.all(color: const Color(0xFFE9E9EF)),
+              : Border.all(color: const Color(0xFFE8E8ED)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             Text(
-              text,
+              content,
               style: TextStyle(
-                color: mine ? Colors.white : const Color(0xFF20232B),
+                color: mine ? Colors.white : const Color(0xFF252832),
                 fontSize: 14,
                 height: 1.45,
               ),
             ),
-            if (time.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                time,
-                style: TextStyle(
-                  color: mine ? Colors.white70 : Colors.grey,
-                  fontSize: 10,
-                ),
+            const SizedBox(height: 4),
+            Text(
+              _messageTime(message),
+              style: TextStyle(
+                fontSize: 10,
+                color: mine
+                    ? Colors.white70
+                    : Colors.grey.shade500,
               ),
-            ],
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _emptyState() {
-    return const Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 55,
-            color: Colors.grey,
+  Widget _buildComposer() {
+    if (_chatExpired) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        color: Colors.grey.shade100,
+        child: const Text(
+          'এই চ্যাটের সময়সীমা শেষ হয়েছে। এখন আর মেসেজ পাঠানো যাবে না।',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.red,
+            fontWeight: FontWeight.w600,
           ),
-          SizedBox(height: 12),
-          Text(
-            'এখনো কোনো মেসেজ নেই',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF777D89),
+        ),
+      );
+    }
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: Color(0xFFEAEAF0)),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                minLines: 1,
+                maxLines: 4,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: InputDecoration(
+                  hintText: 'মেসেজ লিখুন...',
+                  filled: true,
+                  fillColor: const Color(0xFFF5F5F8),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 11,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(24),
+                    borderSide: BorderSide.none,
+                  ),
+                ),
+                onSubmitted: (_) => _sendMessage(),
+              ),
             ),
-          ),
-          SizedBox(height: 5),
-          Text(
-            'কথোপকথন শুরু করতে মেসেজ পাঠান।',
-            style: TextStyle(color: Colors.grey),
-          ),
-        ],
+            const SizedBox(width: 8),
+            IconButton(
+              onPressed: _sending ? null : _sendMessage,
+              style: IconButton.styleFrom(
+                backgroundColor: primary,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey.shade400,
+              ),
+              icon: _sending
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.send_rounded),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -286,19 +406,25 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F7FA),
       appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF20232B),
+        elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               widget.otherName,
               style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.bold,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
               ),
             ),
             const Text(
-              'RedLoop Pro Chat',
-              style: TextStyle(fontSize: 11),
+              'RedLoop Pro • ব্যক্তিগত চ্যাট',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey,
+              ),
             ),
           ],
         ),
@@ -315,7 +441,7 @@ class _ChatScreenState extends State<ChatScreen> {
             child: _loading
                 ? const Center(
                     child: CircularProgressIndicator(
-                      color: Color(0xFFDC2638),
+                      color: primary,
                     ),
                   )
                 : _error != null && _messages.isEmpty
@@ -327,7 +453,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             children: [
                               const Icon(
                                 Icons.cloud_off_outlined,
-                                size: 45,
+                                size: 48,
                                 color: Colors.grey,
                               ),
                               const SizedBox(height: 12),
@@ -337,7 +463,7 @@ class _ChatScreenState extends State<ChatScreen> {
                               ),
                               const SizedBox(height: 12),
                               ElevatedButton(
-                                onPressed: _loadMessages,
+                                onPressed: () => _loadMessages(),
                                 child: const Text('আবার চেষ্টা করুন'),
                               ),
                             ],
@@ -345,76 +471,26 @@ class _ChatScreenState extends State<ChatScreen> {
                         ),
                       )
                     : _messages.isEmpty
-                        ? _emptyState()
+                        ? const Center(
+                            child: Text(
+                              'এখনো কোনো মেসেজ নেই।\nকথা শুরু করুন।',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.grey,
+                                height: 1.6,
+                              ),
+                            ),
+                          )
                         : ListView.builder(
                             controller: _scrollController,
                             padding: const EdgeInsets.all(16),
                             itemCount: _messages.length,
                             itemBuilder: (context, index) {
-                              return _messageBubble(_messages[index]);
+                              return _buildMessage(_messages[index]);
                             },
                           ),
           ),
-          SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  top: BorderSide(color: Color(0xFFE9E9EF)),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _messageController,
-                      minLines: 1,
-                      maxLines: 4,
-                      textCapitalization: TextCapitalization.sentences,
-                      decoration: InputDecoration(
-                        hintText: 'মেসেজ লিখুন...',
-                        filled: true,
-                        fillColor: const Color(0xFFF5F5F7),
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(25),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                      onSubmitted: (_) => _sendMessage(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  CircleAvatar(
-                    radius: 23,
-                    backgroundColor: const Color(0xFFDC2638),
-                    child: IconButton(
-                      onPressed: _sending ? null : _sendMessage,
-                      icon: _sending
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(
-                                color: Colors.white,
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Icon(
-                              Icons.send_rounded,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          _buildComposer(),
         ],
       ),
     );
