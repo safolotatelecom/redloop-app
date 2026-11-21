@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:local_auth/local_auth.dart';
 
 import 'api_helper.dart';
@@ -1102,6 +1106,20 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
               ),
             ],
           ),
+          if (rows != null && rows.isNotEmpty)
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LiveDonorMapPage(requestId: requestId),
+                  ),
+                ),
+                icon: const Icon(Icons.map_outlined),
+                label: const Text('রক্তদাতাদের Live Location দেখুন'),
+              ),
+            ),
           if (rows == null && !isLoading)
             SizedBox(
               width: double.infinity,
@@ -1299,6 +1317,210 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
         },
         icon: const Icon(Icons.add),
         label: const Text('অনুরোধ'),
+      ),
+    );
+  }
+}
+
+class LiveDonorMapPage extends StatefulWidget {
+  final String requestId;
+
+  const LiveDonorMapPage({super.key, required this.requestId});
+
+  @override
+  State<LiveDonorMapPage> createState() => _LiveDonorMapPageState();
+}
+
+class _LiveDonorMapPageState extends State<LiveDonorMapPage> {
+  final MapController _mapController = MapController();
+  Timer? _refreshTimer;
+  bool _loading = true;
+  String? _error;
+  List<Map<String, dynamic>> _locations = [];
+  bool _hasCentered = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLocations();
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadLocations(silent: true),
+    );
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadLocations({bool silent = false}) async {
+    if (!silent && mounted) setState(() => _loading = true);
+    final result = await ApiService.get(
+      '/blood-requests/${widget.requestId}/live-location',
+    );
+    if (!mounted) return;
+
+    if (result['success'] == true) {
+      final raw = result['locations'];
+      final parsed = raw is List
+          ? raw.whereType<Map>().map((item) => Map<String, dynamic>.from(item))
+              .where((item) =>
+                  double.tryParse(item['latitude']?.toString() ?? '') != null &&
+                  double.tryParse(item['longitude']?.toString() ?? '') != null)
+              .toList()
+          : <Map<String, dynamic>>[];
+      setState(() {
+        _locations = parsed;
+        _loading = false;
+        _error = null;
+      });
+      if (parsed.isNotEmpty && !_hasCentered) {
+        final first = parsed.first;
+        final point = LatLng(
+          double.parse(first['latitude'].toString()),
+          double.parse(first['longitude'].toString()),
+        );
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _mapController.move(point, 14);
+        });
+        _hasCentered = true;
+      }
+    } else {
+      setState(() {
+        _loading = false;
+        _error = result['message']?.toString() ?? 'Location পাওয়া যায়নি।';
+      });
+    }
+  }
+
+  List<Marker> _buildMarkers() {
+    return _locations.map((location) {
+      final latitude = double.parse(location['latitude'].toString());
+      final longitude = double.parse(location['longitude'].toString());
+      final name = location['donor_name']?.toString().trim();
+      final label = (name == null || name.isEmpty) ? 'রক্তদাতা' : name;
+      return Marker(
+        point: LatLng(latitude, longitude),
+        width: 150,
+        height: 58,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(9),
+                boxShadow: const [
+                  BoxShadow(color: Colors.black26, blurRadius: 5),
+                ],
+              ),
+              child: Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Color(0xFF20232B),
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const Icon(Icons.location_on, color: Color(0xFFDC2638), size: 30),
+          ],
+        ),
+      );
+    }).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final first = _locations.isNotEmpty ? _locations.first : null;
+    final center = first == null
+        ? const LatLng(23.8103, 90.4125)
+        : LatLng(
+            double.parse(first['latitude'].toString()),
+            double.parse(first['longitude'].toString()),
+          );
+
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('রক্তদাতাদের Live Location'),
+        actions: [
+          IconButton(
+            tooltip: 'Refresh',
+            onPressed: () => _loadLocations(),
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
+      ),
+      body: Column(
+        children: [
+          if (_loading) const LinearProgressIndicator(color: Color(0xFFDC2638)),
+          if (_error != null && _locations.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(_error!, textAlign: TextAlign.center),
+            ),
+          if (_locations.isEmpty && !_loading)
+            const Expanded(
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.all(28),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.location_searching, size: 54, color: Colors.grey),
+                      SizedBox(height: 12),
+                      Text(
+                        'এখনো কোনো Accepted Donor Live Location শেয়ার করেননি।',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        'রক্তদাতা Location Sharing চালু করলে এখানে দেখা যাবে।',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          if (_locations.isNotEmpty)
+            Expanded(
+              child: FlutterMap(
+                mapController: _mapController,
+                options: MapOptions(center: center, zoom: 14),
+                children: [
+                  TileLayer(
+                    urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    userAgentPackageName: 'com.redloop.pro',
+                  ),
+                  MarkerLayer(markers: _buildMarkers()),
+                  const RichAttributionWidget(
+                    attributions: [
+                      TextSourceAttribution('© OpenStreetMap contributors'),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          if (_locations.isNotEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              color: Colors.white,
+              child: Text(
+                '${_locations.length} জন Accepted Donor-এর Location পাওয়া গেছে · প্রতি ১০ সেকেন্ডে আপডেট',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+              ),
+            ),
+        ],
       ),
     );
   }
