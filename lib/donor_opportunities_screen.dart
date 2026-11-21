@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'api_helper.dart';
+import 'screens/chat_screen.dart';
 
 class DonorOpportunitiesScreen extends StatefulWidget {
   final String? requestId;
@@ -104,8 +105,10 @@ class _DonorOpportunitiesScreenState
   }
 
   Future<void> _showAcceptedDetails(
-    Map<String, dynamic> details,
-  ) async {
+    Map<String, dynamic> details, {
+    required String requestId,
+    required String donorId,
+  }) async {
     final name = _value(details, ['requester_name']);
     final phone = _value(details, ['requester_phone', 'phone']);
     final hospital = _value(details, ['hospital_name']);
@@ -175,17 +178,35 @@ class _DonorOpportunitiesScreenState
           ),
         ),
         actions: [
-          ElevatedButton(
+          TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF168C78),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+            child: const Text('পরে'),
+          ),
+          if (donorId.isNotEmpty)
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ChatScreen(
+                      requestId: requestId,
+                      donorId: donorId,
+                      otherName: name,
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.chat_bubble_outline),
+              label: const Text('চ্যাট শুরু করুন'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF168C78),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
             ),
-            child: const Text('ঠিক আছে'),
-          ),
         ],
       ),
     );
@@ -252,9 +273,23 @@ class _DonorOpportunitiesScreenState
           final details = result['accepted_details'];
 
           if (details is Map) {
-            await _showAcceptedDetails(
-              Map<String, dynamic>.from(details),
-            );
+            final userResult = await ApiService.getCurrentUser();
+            final user = userResult['user'];
+            final donorId = user is Map ? user['id']?.toString() : null;
+
+            if (donorId != null && donorId.isNotEmpty) {
+              await _showAcceptedDetails(
+                Map<String, dynamic>.from(details),
+                requestId: id,
+                donorId: donorId,
+              );
+            } else {
+              await _showAcceptedDetails(
+                Map<String, dynamic>.from(details),
+                requestId: id,
+                donorId: '',
+              );
+            }
           } else {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
