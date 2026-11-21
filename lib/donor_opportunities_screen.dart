@@ -1,5 +1,8 @@
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'api_helper.dart';
 import 'screens/chat_screen.dart';
@@ -182,6 +185,20 @@ class _DonorOpportunitiesScreenState
             onPressed: () => Navigator.pop(dialogContext),
             child: const Text('পরে'),
           ),
+          if (donorId.isNotEmpty)
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => DonorLiveLocationPage(requestId: requestId),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.location_on_outlined),
+              label: const Text('Live Location'),
+            ),
           if (donorId.isNotEmpty)
             ElevatedButton.icon(
               onPressed: () {
@@ -859,6 +876,243 @@ class _DonorOpportunitiesScreenState
                               return _requestCard(_requests[index]);
                             },
                           ),
+      ),
+    );
+  }
+}
+
+
+class DonorLiveLocationPage extends StatefulWidget {
+  final String requestId;
+
+  const DonorLiveLocationPage({
+    super.key,
+    required this.requestId,
+  });
+
+  @override
+  State<DonorLiveLocationPage> createState() =>
+      _DonorLiveLocationPageState();
+}
+
+class _DonorLiveLocationPageState extends State<DonorLiveLocationPage> {
+  static const Color _green = Color(0xFF168C78);
+  Timer? _timer;
+  bool _starting = false;
+  bool _sharing = false;
+  bool _stopping = false;
+  String _status = 'লোকেশন শেয়ার শুরু করতে নিচের বাটনে চাপ দিন।';
+  DateTime? _lastUpdated;
+
+  String get _endpoint =>
+      '/blood-requests/${widget.requestId}/live-location';
+
+  Future<bool> _ensureLocationPermission() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      _setStatus('ফোনের Location/GPS চালু করুন।');
+      await Geolocator.openLocationSettings();
+      return false;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+
+    if (permission == LocationPermission.denied) {
+      _setStatus('লোকেশন অনুমতি দেওয়া হয়নি।');
+      return false;
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      _setStatus('Settings থেকে RedLoop Pro-কে Location permission দিন।');
+      await Geolocator.openAppSettings();
+      return false;
+    }
+
+    return true;
+  }
+
+  void _setStatus(String value) {
+    if (mounted) setState(() => _status = value);
+  }
+
+  Future<void> _sendCurrentLocation({bool showErrors = true}) async {
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 20),
+        ),
+      );
+
+      final result = await ApiService.put(
+        _endpoint,
+        body: {
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+          'accuracy_meters': position.accuracy,
+          'duration_minutes': 120,
+        },
+      );
+
+      if (!mounted) return;
+
+      if (result['success'] == true ||
+          result['message']?.toString().toLowerCase().contains('success') == true) {
+        setState(() {
+          _lastUpdated = DateTime.now();
+          _status = 'আপনার Live Location অনুরোধকারীর সঙ্গে শেয়ার হচ্ছে।';
+          _sharing = true;
+        });
+      } else {
+        final message = result['message']?.toString() ??
+            'লোকেশন আপডেট করা যায়নি।';
+        if (showErrors) _setStatus(message);
+        if (result['status'] == 403) {
+          _timer?.cancel();
+          setState(() => _sharing = false);
+        }
+      }
+    } catch (_) {
+      if (showErrors) _setStatus('লোকেশন পাঠানো যায়নি। ইন্টারনেট ও GPS পরীক্ষা করুন।');
+    }
+  }
+
+  Future<void> _startSharing() async {
+    if (_starting || _sharing) return;
+    setState(() => _starting = true);
+
+    try {
+      final allowed = await _ensureLocationPermission();
+      if (!allowed || !mounted) return;
+
+      await _sendCurrentLocation();
+      if (!mounted || !_sharing) return;
+
+      _timer?.cancel();
+      _timer = Timer.periodic(
+        const Duration(seconds: 15),
+        (_) => _sendCurrentLocation(showErrors: false),
+      );
+    } finally {
+      if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  Future<void> _stopSharing() async {
+    if (_stopping) return;
+    setState(() => _stopping = true);
+    _timer?.cancel();
+
+    try {
+      final result = await ApiService.delete(_endpoint);
+      if (!mounted) return;
+      if (result['success'] == true || result['message'] != null) {
+        setState(() {
+          _sharing = false;
+          _status = 'Live Location শেয়ার বন্ধ করা হয়েছে।';
+        });
+      } else {
+        setState(() {
+          _status = result['message']?.toString() ??
+              'লোকেশন শেয়ার বন্ধ করা যায়নি।';
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() => _status = 'সার্ভারের সঙ্গে যোগাযোগ করা যায়নি।');
+      }
+    } finally {
+      if (mounted) setState(() => _stopping = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Donor Live Location'),
+        backgroundColor: Colors.white,
+        foregroundColor: const Color(0xFF263238),
+        elevation: 0,
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(22),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const SizedBox(height: 24),
+            Icon(
+              _sharing ? Icons.location_on : Icons.location_searching,
+              size: 76,
+              color: _sharing ? _green : Colors.blueGrey,
+            ),
+            const SizedBox(height: 20),
+            Text(
+              _sharing ? 'Live Location চালু আছে' : 'Live Location শেয়ার',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 21, fontWeight: FontWeight.w800),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _status,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 14, height: 1.5),
+            ),
+            if (_lastUpdated != null) ...[
+              const SizedBox(height: 10),
+              Text(
+                'সর্বশেষ আপডেট: ${_lastUpdated!.toLocal().toString().substring(0, 19)}',
+                textAlign: TextAlign.center,
+                style: const TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 28),
+            ElevatedButton.icon(
+              onPressed: _starting || _sharing ? null : _startSharing,
+              icon: _starting
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.my_location),
+              label: Text(_starting ? 'শুরু হচ্ছে...' : 'লোকেশন শেয়ার শুরু করুন'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _green,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 15),
+              ),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: !_sharing || _stopping ? null : _stopSharing,
+              icon: const Icon(Icons.stop_circle_outlined),
+              label: Text(_stopping ? 'বন্ধ হচ্ছে...' : 'লোকেশন শেয়ার বন্ধ করুন'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFFDC3545),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+            ),
+            const Spacer(),
+            const Text(
+              'এই স্ক্রিন খোলা থাকা অবস্থায় প্রতি ১৫ সেকেন্ডে লোকেশন আপডেট হবে। অ্যাপ বন্ধ বা স্ক্রিন থেকে বের হলে স্বয়ংক্রিয় আপডেট বন্ধ হবে। শেয়ার সর্বোচ্চ ১২০ মিনিট কার্যকর থাকবে।',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.black54, height: 1.5),
+            ),
+          ],
+        ),
       ),
     );
   }
