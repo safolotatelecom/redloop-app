@@ -4,6 +4,7 @@ import 'package:local_auth/local_auth.dart';
 import 'api_helper.dart';
 import 'donor_profile_screen.dart';
 import 'donor_opportunities_screen.dart';
+import 'screens/chat_screen.dart';
 import 'screens/register.dart';
 
 void main() {
@@ -1128,6 +1129,8 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                   ? donor['name']?.toString() ?? 'রক্তদাতা'
                   : confirmation['donor_name']?.toString() ?? 'রক্তদাতা';
               final decision = confirmation['requester_decision']?.toString() ?? 'pending';
+              final donorId = confirmation['donor_id']?.toString() ??
+                  (donor is Map ? donor['id']?.toString() ?? '' : '');
               final confirmationId = confirmation['id']?.toString() ?? '';
               final rated = confirmation['rating'] != null ||
                   confirmation['requester_rating'] != null ||
@@ -1174,6 +1177,24 @@ class _MyRequestsPageState extends State<MyRequestsPage> {
                       ],
                     ),
                     const SizedBox(height: 9),
+                    if (donorId.isNotEmpty && decision != 'no_thanks')
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ChatScreen(
+                                requestId: requestId,
+                                donorId: donorId,
+                                otherName: donorName,
+                              ),
+                            ),
+                          ),
+                          icon: const Icon(Icons.chat_bubble_outline),
+                          label: const Text('রক্তদাতার সঙ্গে চ্যাট করুন'),
+                        ),
+                      ),
                     if (decision == 'pending')
                       Row(
                         children: [
